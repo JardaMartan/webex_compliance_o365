@@ -1,42 +1,42 @@
 version: "3.9"
 
 networks:
-  wx_net:
-    name: wx_net
+  wx_o365_net:
+    name: wx_o365_net
     
 volumes:  
-  dynamodb-data:
+  dynamodb-o365:
     driver: local
 
 services: 
-  webex_compliance:
+  webex_compliance_o365:
     build:
       context: .
       dockerfile: Dockerfile
-    command: dotenv -f .env_docker run python wxt_compliance.py -vv -cm
-    container_name: app
+    command: dotenv -f .env_docker run python wxt_compliance_o365.py -vv -cm
+    container_name: webex_compliance_o365
     depends_on:
       - dynamodb
     ports:
-      - "5050:5050"
+      - "5052:5050"
     environment:
       PYTHONUNBUFFERED: 'true'
     env_file:
       - '.env_docker'
     restart: always
     networks:
-      - wx_net
-    image: jardamartan/wx_compliance
+      - wx_o365_net
+    image: jardamartan/webex_compliance_o365
 
-  dynamodb:
+  dynamodb_o365:
     build:
       context: .
       dockerfile: Dockerfile-dynamo
-    image: dynamo
-    container_name: dynamodb
+    image: dynamo_o365
+    container_name: dynamodb_o365
     command: -jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data
     restart: always
     volumes:
-      - dynamodb-data:/home/dynamodblocal/data
+      - dynamodb-o365:/home/dynamodblocal/data
     networks:
-      - wx_net
+      - wx_o365_net
