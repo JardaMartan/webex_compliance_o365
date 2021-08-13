@@ -41,6 +41,11 @@ TEAMS_COMPLIANCE_SCOPE = ["spark-compliance:events_read",
     "spark-compliance:teams_read",
     "spark:people_read"] # "spark:rooms_read", "spark:kms"
     
+MORE_SCOPE = ["spark:memberships_read", "spark:memberships_write",
+    "spark:messages_read", "spark:messages_write",
+    "spark:team_memberships_read", "spark:team_memberships_write",
+    "spark:teams_read", "spark:teams_write"]
+    
 TEAMS_COMPLIANCE_READ_SCOPE = ["spark-compliance:events_read",
     "spark-compliance:memberships_read",
     "spark-compliance:messages_read",
@@ -52,6 +57,30 @@ TEAMS_COMPLIANCE_READ_SCOPE = ["spark-compliance:events_read",
 MEETINGS_COMPLIANCE_SCOPE = ["spark-compliance:meetings_write"]
 
 DEFAULT_SCOPE = ["spark:kms"]
+
+SUSPECT_MIME_TYPES = ["application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+    "application/vnd.ms-word.document.macroEnabled.12",
+    "application/vnd.ms-word.template.macroEnabled.12",
+    "application/vnd.ms-word.document.macroEnabled.12",
+    "application/vnd.ms-word.template.macroEnabled.12",
+    "application/msexcel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+    "application/vnd.ms-excel.sheet.macroEnabled.12",
+    "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+    "application/vnd.ms-excel.template.macroEnabled.12",
+    "application/vnd.ms-excel.addin.macroEnabled.12",
+    "application/mspowerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.presentationml.template",
+    "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+    "application/vnd.ms-powerpoint.addin.macroEnabled.12",
+    "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+    "application/vnd.ms-powerpoint.slideshow.macroEnabled.12",
+    "application/vnd.ms-powerpoint.template.macroEnabled.12",
+    "application/pdf"]
 
 STATE_CHECK = "webex is great" # integrity test phrase
 EVENT_CHECK_INTERVAL = 15
@@ -71,12 +100,13 @@ signal.signal(signal.SIGINT, sigterm_handler)
 
 thread_executor = concurrent.futures.ThreadPoolExecutor()
 wxt_username = "COMPLIANCE"
+sxt_user_id = None
 wxt_token_key = "COMPLIANCE"
 wxt_resource = None
 wxt_type = None
 wxt_actor_email = None
-wxt_admin_audit = False
 wxt_compliance = False
+token_refreshed = False
 
 class AccessTokenAbs(AccessToken):
     def __init__(self, access_token_json):
@@ -97,6 +127,8 @@ class AccessTokenAbs(AccessToken):
         return self._json_data["refresh_token_expires_at"]
 
 def save_tokens(token_key, tokens):
+    global token_refreshed
+    
     flask_app.logger.debug("AT timestamp: {}".format(tokens.expires_at))
     token_record = {
         "access_token": tokens.access_token,
@@ -105,6 +137,8 @@ def save_tokens(token_key, tokens):
         "refresh_token_expires_at": tokens.refresh_token_expires_at
     }
     ddb.save_db_record(token_key, "TOKENS", str(tokens.expires_at), **token_record)
+    
+    token_refreshed = True
     
 def get_tokens_for_key(token_key):
     db_tokens = ddb.get_db_record(token_key, "TOKENS")
@@ -148,8 +182,8 @@ def startup():
     flask_app.logger.debug("initialize DDB object {}".format(ddb))
         
     flask_app.logger.debug("Starting event check...")
-    # check_events(EVENT_CHECK_INTERVAL, wxt_compliance, wxt_admin_audit, wxt_resource, wxt_type, wxt_actor_email)
-    thread_executor.submit(check_events, EVENT_CHECK_INTERVAL, wxt_compliance, wxt_admin_audit, wxt_resource, wxt_type, wxt_actor_email)
+    # check_events(EVENT_CHECK_INTERVAL, wxt_compliance, wxt_resource, wxt_type, wxt_actor_email)
+    thread_executor.submit(check_events, EVENT_CHECK_INTERVAL, wxt_compliance, wxt_resource, wxt_type, wxt_actor_email)
 
 @flask_app.route("/")
 def hello():
@@ -176,7 +210,7 @@ def authorize():
 
     client_id = os.getenv("WEBEX_INTEGRATION_CLIENT_ID")
     redirect_uri = quote(full_redirect_uri, safe="")
-    scope = TEAMS_COMPLIANCE_READ_SCOPE + ADMIN_SCOPE + DEFAULT_SCOPE
+    scope = TEAMS_COMPLIANCE_SCOPE + DEFAULT_SCOPE + MORE_SCOPE
     scope_uri = quote(" ".join(scope), safe="")
     join_url = webex_api.base_url+"authorize?client_id={}&response_type=code&redirect_uri={}&scope={}&state={}".format(client_id, redirect_uri, scope_uri, STATE_CHECK)
 
@@ -281,7 +315,9 @@ Doesn't work until "wxt_username" runs through OAuth grant flow above.
 Access token is automatically refreshed if needed using Refresh Token.
 No additional user authentication is required.
 """
-def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_admin_audit=False, wx_resource=None, wx_type=None, wx_actor_email=None):
+def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_resource=None, wx_type=None, wx_actor_email=None):
+    global wxt_username, wxt_user_id, token_refreshed
+
     tokens = None
     wxt_client = None
     
@@ -294,65 +330,112 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_ad
     
     from_time = datetime.utcnow()
     while True:
-        # flask_app.logger.debug("Check events tick.")
+        try:
+            # flask_app.logger.debug("Check events tick.")
 
-# check for token until there is one available in the DB        
-        if tokens is None:
-            tokens = get_tokens_for_key(wxt_token_key)
-            if tokens:
-                wxt_client = WebexTeamsAPI(access_token=tokens.access_token)
+    # check for token until there is one available in the DB        
+            if tokens is None or token_refreshed:
+                tokens = get_tokens_for_key(wxt_token_key)
+                if tokens:
+                    wxt_client = WebexTeamsAPI(access_token=tokens.access_token)
 
-# get actorId if required
-                if wx_actor_email is not None:
-                    try:
-                        wx_actor_list = wxt_client.people.list(email=wx_actor_email)
-                        for person in wx_actor_list:
-                            xargs["actorId"] = person.id
-                    except ApiError as e:
-                        flask_app.logger.error("People list API request error: {}".format(e))
-                
-                user_info = wxt_client.people.me()
-                flask_app.logger.debug("Got user info: {}".format(user_info))
-                wx_org_id = user_info.orgId
-
+    # get actorId if required
+                    if wx_actor_email is not None:
+                        try:
+                            wx_actor_list = wxt_client.people.list(email=wx_actor_email)
+                            for person in wx_actor_list:
+                                xargs["actorId"] = person.id
+                        except ApiError as e:
+                            flask_app.logger.error("People list API request error: {}".format(e))
+                    
+                    user_info = wxt_client.people.me()
+                    flask_app.logger.debug("Got user info: {}".format(user_info))
+                    wx_org_id = user_info.orgId
+                    wxt_username = user_info.emails[0]
+                    wxt_user_id = user_info.id
+                    
+                    token_refreshed = False
+                else:
+                    flask_app.logger.error("No access tokens for key {}. Authorize the user first.".format(wxt_token_key))
             else:
-                flask_app.logger.error("No access tokens for key {}. Authorize the user first.".format(wxt_token_key))
-        else:
-# renew access token using refresh token if needed
-            token_delta = datetime.fromtimestamp(float(tokens.expires_at)) - datetime.utcnow()
-            if token_delta.total_seconds() < SAFE_TOKEN_DELTA:
-                flask_app.logger.info("Access token is about to expire, renewing...")
-                tokens = refresh_tokens_for_key(wxt_token_key)
-                wxt_client = WebexTeamsAPI(access_token=tokens.access_token)
-                new_client = True
+    # renew access token using refresh token if needed
+                token_delta = datetime.fromtimestamp(float(tokens.expires_at)) - datetime.utcnow()
+                if token_delta.total_seconds() < SAFE_TOKEN_DELTA:
+                    flask_app.logger.info("Access token is about to expire, renewing...")
+                    tokens = refresh_tokens_for_key(wxt_token_key)
+                    wxt_client = WebexTeamsAPI(access_token=tokens.access_token)
+                    new_client = True
 
-# query the Events API        
-        if wxt_client:
-            try:
-                to_time = datetime.utcnow()
-                from_stamp = from_time.isoformat(timespec="milliseconds")+"Z"
-                to_stamp = to_time.isoformat(timespec="milliseconds")+"Z"
-                flask_app.logger.debug("check interval {} - {}".format(from_stamp, to_stamp))
-                if wx_compliance:
-                    event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
-                    for event in event_list:
-                        actor = wxt_client.people.get(event.actorId)
-                        
-                        # TODO: information logging to an external system
-                        flask_app.logger.info("{} {} {} {} by {}".format(event.created, event.resource, event.type, event.data.personEmail, actor.emails[0]))
-                        
-                if wx_admin_audit:
-                    # TODO: get admin audit events
-                    admin_audit_list = wxt_client.admin_audit_events.list(wx_org_id, _from=from_stamp, to=to_stamp)
-                    for event in admin_audit_list:
-                        # TODO: information logging to an external system
-                        audit_data = event.data
-                        flask_app.logger.info("{} {} {} {} by {}".format(event.created, audit_data.eventCategory, audit_data.eventDescription, audit_data.actionText, audit_data.actorEmail))
-                from_time = to_time
-            except ApiError as e:
-                flask_app.logger.error("Admin audit API request error: {}".format(e))
+    # query the Events API        
+            if wxt_client:
+                try:
+                    to_time = datetime.utcnow()
+                    from_stamp = from_time.isoformat(timespec="milliseconds")+"Z"
+                    to_stamp = to_time.isoformat(timespec="milliseconds")+"Z"
+                    flask_app.logger.debug("check interval {} - {}".format(from_stamp, to_stamp))
+                    if wx_compliance:
+                        event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
+                        for event in event_list:
+                            flask_app.logger.info("Event: {}".format(event))
+                            
+                            actor = wxt_client.people.get(event.actorId)
+                            
+                            # TODO: information logging to an external system
+                            # flask_app.logger.info("{} {} {} {} by {}\n data: {}".format(event.created, event.resource, event.type, event.data.personEmail, actor.emails[0], event))
+                            
+                            if event.resource == "memberships" and event.type == "created" and event.data.roomType == "group" and not event.actorId == wxt_user_id:
+                                room_info = wxt_client.rooms.get(event.data.roomId)
+                                flask_app.logger.info("Room info: {}".format(room_info))
+                                
+                                if room_info.creatorId == event.data.personId:                             
+                                    flask_app.logger.info("send notification")
+                                    if room_info.teamId:
+                                        flask_app.logger.info("Room is part of a team")
+                                        my_team_membership_list = wxt_client.team_memberships.list(room_info.teamId)
+                                        my_team_membership = None
+                                        for team_membership in my_team_membership_list:
+                                            if team_membership.personId == wxt_user_id:
+                                                my_team_membership = team_membership
+                                                flask_app.logger.info("existing team membership: {}".format(my_team_membership))
+                                                break
+                                        if not my_team_membership:
+                                            my_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_user_id, isModerator = True)
+                                        
+                                    send_compliance_message(wxt_client, event.data.roomId, "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space")
+                                    
+                            if event.resource == "messages" and event.type == "created" and not event.actorId == wxt_user_id:
+                                # message_info = wxt_client.messages.get(event.data.id)
+                                # flask_app.logger.info("Message info: {}".format(message_info))
+                                if event.data.files:
+                                    hdr = {"Authorization": "Bearer " + wxt_client.access_token}
+                                    for url in message_info.files:
+                                        file_info = requests.head(url, headers = hdr)
+                                        flask_app.logger.info("Message file: {}\ninfo: {}".format(url, file_info.headers))
+                                        if file_info.headers["Content-Type"] in SUSPECT_MIME_TYPES:
+                                            send_compliance_message(wxt_client, event.data.roomId, "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space")          
+                                            wxt_client.messages.delete(event.data.id)                                  
 
-        time.sleep(check_interval)
+                    
+                except ApiError as e:
+                    flask_app.logger.error("API request error: {}".format(e))
+                finally:
+                    from_time = to_time
+
+        except Exception as e:
+            flask_app.logger.error("check_events() loop exception: {}".format(e))
+        finally:
+            time.sleep(check_interval)
+            
+def send_compliance_message(wxt_client, room_id, message):
+    my_membership_list = wxt_client.memberships.list(roomId = room_id, personId = wxt_user_id)
+    my_membership = None
+    for my_membership in my_membership_list:
+        flask_app.logger.info("existing membership: {}".format(my_membership))
+    if not my_membership:
+        my_membership = wxt_client.memberships.create(roomId = room_id, personId = wxt_user_id)
+        
+    wxt_client.messages.create(roomId = room_id, markdown = message)
+    wxt_client.memberships.delete(my_membership.id)
 
 """
 Independent thread startup, see:
@@ -391,8 +474,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--verbose', action='count', help="Set logging level by number of -v's, -v=WARN, -vv=INFO, -vvv=DEBUG")
     parser.add_argument("-c", "--compliance", action='store_true', help="Monitor compliance events, default: no")
-    parser.add_argument("-m", "--admin", action='store_true', help="Monitor admin audit events, default: no")
-    # parser.add_argument("-u", "--username", type = str, help="Compliance Officer username (e-mail)", default=default_user)
     parser.add_argument("-r", "--resource", type = str, help="Resource type (messages, memberships), default: all")
     parser.add_argument("-t", "--type", type = str, help="Event type (created, updated, deleted), default: all")
     parser.add_argument("-a", "--actor", type = str, help="Monitored actor id (user's e-mail), default: all")
@@ -411,11 +492,9 @@ if __name__ == "__main__":
     flask_app.logger.info("Using database: {} - {}".format(os.getenv("DYNAMODB_ENDPOINT_URL"), os.getenv("DYNAMODB_TABLE_NAME")))
     
     wxt_compliance = args.compliance
-    wxt_admin_audit = args.admin
     wxt_resource = args.resource
     wxt_type = args.type
     wxt_actor_email = args.actor
-    # wxt_username = args.username
         
     start_runner()
     flask_app.run(host="0.0.0.0", port=5050)
