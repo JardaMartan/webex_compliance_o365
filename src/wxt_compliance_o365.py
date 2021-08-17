@@ -459,6 +459,19 @@ def query_events():
     results = ""
     
     return results
+    
+@flask_app.route("/o365wh", methods=["GET", "POST"])
+def o365_webhook():
+    webhook = request.get_json(silent=True)
+    flask_app.logger.debug("O365 webhook received: {}".format(webhook))
+    
+    if request.method == "POST":
+        validationToken = request.args.get("validationToken")
+        if validationToken:
+            flask_app.logger.debug("validation token check: {}".format(validationToken))
+            return validationToken
+    
+    return "OK"
 
 """
 Check events API thread. Infinite loop which periodically checks the Events API.
