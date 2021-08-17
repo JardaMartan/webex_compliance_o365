@@ -466,6 +466,8 @@ def o365_webhook():
     flask_app.logger.debug("O365 webhook received: {}".format(webhook))
     
     if request.method == "POST":
+        
+        # validation token when a new subscription is created
         validationToken = request.args.get("validationToken")
         if validationToken:
             flask_app.logger.debug("validation token check: {}".format(validationToken))
