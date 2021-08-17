@@ -7,13 +7,16 @@ import logging
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote, parse_qsl, urlencode, urlunparse
 
 from webexteamssdk import WebexTeamsAPI, ApiError, AccessToken
 webex_api = WebexTeamsAPI(access_token="12345")
 
 import boto3
 from ddb_single_table_obj import DDB_Single_Table
+
+from O365 import Account, FileSystemTokenBackend
+from o365_db_token_storage import DBTokenBackend
 
 import json, requests
 from datetime import datetime, timedelta, timezone
@@ -22,6 +25,7 @@ from flask import Flask, request, redirect, url_for
 
 import concurrent.futures
 import signal
+import re
 
 import buttons_cards as bc
 
@@ -87,6 +91,28 @@ SUSPECT_MIME_TYPES = ["application/msword",
 STATE_CHECK = "webex is great" # integrity test phrase
 EVENT_CHECK_INTERVAL = 15
 SAFE_TOKEN_DELTA = 3600 # safety seconds before access token expires - renew if smaller
+
+GRAPH_SCOPE = ["offline_access",
+    "User.Read.All",
+    "Group.Read.All",
+    "Group.ReadWrite.All",
+    "GroupMember.Read.All",
+    "GroupMember.ReadWrite.All",
+    "Sites.FullControl.All",
+    "Sites.Manage.All",
+    "Sites.Read.All",
+    "Sites.ReadWrite.All",
+    "Subscription.Read.All",
+    "Team.ReadBasic.All",
+    "TeamMember.Read.All",
+    "TeamMember.ReadWrite.All",
+    "TeamMember.ReadWriteNonOwnerRole.All",
+    "User.Read",
+    "User.Read.All"]
+O365_SCOPE = GRAPH_SCOPE
+O365_LOCAL_USER_KEY = "LOCAL"
+O365_ACCOUNT_KEY = "GENERIC"
+O365_API_CHECK_INTERVAL = 3600
 
 def sigterm_handler(_signo, _stack_frame):
     "When sysvinit sends the TERM signal, cleanup before exiting."
@@ -170,6 +196,54 @@ def refresh_tokens_for_key(token_key):
         
     return new_tokens
     
+# O365
+def get_o365_account(user_id, org_id):
+    o365_client_id = os.getenv("O365_CLIENT_ID")
+    o365_client_secret = os.getenv("O365_CLIENT_SECRET")
+    o365_credentials = (o365_client_id, o365_client_secret)
+    
+    o365_tenant_id = os.getenv("O365_TENANT_ID")
+
+    token_backend = DBTokenBackend(user_id, "O365_GUEST_CHECK", org_id)
+    account = Account(o365_credentials, tenant_id = o365_tenant_id, token_backend=token_backend, auth_flow_type = "authorization")
+    
+    flask_app.logger.debug("account {} is{} authenticated".format(user_id, "" if account.is_authenticated else " not"))
+
+    return account
+    
+def get_o365_account_noauth():
+    o365_client_id = os.getenv("O365_CLIENT_ID")
+    o365_client_secret = os.getenv("O365_CLIENT_SECRET")
+    o365_credentials = (o365_client_id, o365_client_secret)
+
+    o365_tenant_id = os.getenv("O365_TENANT_ID")
+
+    account = Account(o365_credentials, tenant_id = o365_tenant_id, auth_flow_type = "authorization")
+    
+    flask_app.logger.debug("get O365 account without authentication")
+
+    return account
+    
+def o365_check_token():
+    account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
+    
+    if not account.is_authenticated:
+        flask_app.logger.error("No valid O365 authorization, trying refresh token...")
+        con = account.connection
+        token = con.token_backend.get_token()
+        if not token is None:
+            flask_app.logger.debug("Refresh O365 authorization, long lived: {}".format(token.is_long_lived))
+            con.refresh_token()
+            flask_app.logger.debug("Refresh O365 authorization done")
+
+    # query_condition = "$filter=userType eq 'Guest' and mail eq '{}'".format(event.data.personEmail)
+    query_condition = "userType eq 'Guest' and mail eq 'nonexistent@perlovka.guru'"
+    aad = account.directory()
+    user_dir = aad.get_users(query = query_condition)
+    
+    for user in user_dir:
+        flask_app.logger.info("AAD dummy query result: {}".format([user.mail, user.user_principal_name, user.display_name]))
+    
 # Flask part of the code
 
 """
@@ -186,6 +260,7 @@ def startup():
     flask_app.logger.debug("Starting event check...")
     # check_events(EVENT_CHECK_INTERVAL, wxt_compliance, wxt_resource, wxt_type, wxt_actor_email)
     thread_executor.submit(check_events, EVENT_CHECK_INTERVAL, wxt_compliance, wxt_resource, wxt_type, wxt_actor_email)
+    o365_check_token()
 
 @flask_app.route("/")
 def hello():
@@ -267,6 +342,80 @@ def manager():
     return redirect(url_for("authdone"))
     
 """
+O365 OAuth grant flow
+"""
+@flask_app.route('/o365auth')
+def o365_auth():
+    my_state = request.args.get("state", "local")
+    flask_app.logger.debug("input state: {}".format(my_state))
+    
+    myUrlParts = urlparse(request.url)
+    # full_redirect_uri = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("o365_do_auth")
+    full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("o365_do_auth")
+    flask_app.logger.debug("Authorize redirect URL: {}".format(full_redirect_uri))
+
+    # callback = quote(full_redirect_uri, safe="")
+    callback = full_redirect_uri
+    scopes = O365_SCOPE
+    
+    account = get_o365_account_noauth()
+
+    url, o365_state = account.con.get_authorization_url(requested_scopes=scopes, redirect_uri=callback)
+    
+    # replace "state" parameter injected by O365 object
+    o365_auth_parts = urlparse(url)
+    o365_query = dict(parse_qsl(o365_auth_parts.query))
+    o365_query["state"] = my_state
+    new_o365_auth_parts = o365_auth_parts._replace(query = urlencode(o365_query))
+    new_o365_url = urlunparse(new_o365_auth_parts)
+    
+    flask_app.logger.debug("O365 auth URL: {}".format(new_o365_url))
+
+    # the state must be saved somewhere as it will be needed later
+    # my_db.store_state(state) # example...
+
+    return redirect(new_o365_url)
+
+@flask_app.route('/o365doauth')
+def o365_do_auth():
+    # token_backend = FileSystemTokenBackend(token_path='.', token_filename='o365_token.txt')
+    my_state = request.args.get("state", O365_LOCAL_USER_KEY)
+    flask_app.logger.debug("O365 state: {}".format(my_state))
+    
+    # person_data = webex_api.people.get(my_state)
+    # flask_app.logger.debug("O365 login requestor data: {}".format(person_data))
+    
+    account = get_o365_account(my_state, O365_ACCOUNT_KEY) # person_data.orgId
+    
+    # retreive the state saved in auth_step_one
+    # my_saved_state = my_db.get_state()  # example...
+
+    # rebuild the redirect_uri used in auth_step_one
+    myUrlParts = urlparse(request.url)
+    # full_redirect_uri = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("o365_do_auth")
+    full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("o365_do_auth")
+    flask_app.logger.debug("Authorize doauth redirect URL: {}".format(full_redirect_uri))
+
+    # callback = quote(full_redirect_uri, safe="")
+    callback = full_redirect_uri
+    req_url = re.sub(r"^http:", "https:", request.url)
+    
+    flask_app.logger.debug("URL: {}".format(req_url))
+
+    result = account.con.request_token(req_url, 
+                                       state=my_state,
+                                       redirect_uri=callback)
+                                       
+    flask_app.logger.info("O365 authentication status: {}".format("authenticated" if account.is_authenticated else "not authenticated"))
+    
+    # if result is True, then authentication was succesful 
+    #  and the auth token is stored in the token backend
+    if result:
+        return redirect(url_for("authdone"))
+    else:
+        return "Authentication failed: {}".format(result)
+
+"""
 Manual token refresh of a single user. Not needed if the thread is running.
 """
 @flask_app.route("/tokenrefresh", methods=["GET"])
@@ -331,6 +480,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
     flask_app.logger.debug("Additional args: {}".format(xargs))
     
     from_time = datetime.utcnow()
+    o365_token_last_check = datetime.utcnow()
     while True:
         try:
             # flask_app.logger.debug("Check events tick.")
@@ -427,6 +577,11 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                     flask_app.logger.error("API request error: {}".format(e))
                 finally:
                     from_time = to_time
+
+            # verify and renew the O365 token
+            if (datetime.utcnow() - o365_token_last_check).total_seconds() > O365_API_CHECK_INTERVAL:
+                o365_check_token()
+                o365_token_last_check = datetime.utcnow()
 
         except Exception as e:
             flask_app.logger.error("check_events() loop exception: {}".format(e))
