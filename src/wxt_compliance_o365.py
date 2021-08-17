@@ -23,6 +23,8 @@ from flask import Flask, request, redirect, url_for
 import concurrent.futures
 import signal
 
+import buttons_cards as bc
+
 flask_app = Flask(__name__)
 flask_app.config["DEBUG"] = True
 requests.packages.urllib3.disable_warnings()
@@ -401,18 +403,23 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                                         if not my_team_membership:
                                             my_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_user_id, isModerator = True)
                                         
-                                    send_compliance_message(wxt_client, event.data.roomId, "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space")
+                                    send_compliance_message(wxt_client, event.data.roomId, "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space", {})
                                     
                             if event.resource == "messages" and event.type == "created" and not event.actorId == wxt_user_id:
                                 # message_info = wxt_client.messages.get(event.data.id)
                                 # flask_app.logger.info("Message info: {}".format(message_info))
                                 if event.data.files:
                                     hdr = {"Authorization": "Bearer " + wxt_client.access_token}
-                                    for url in message_info.files:
+                                    for url in event.data.files:
                                         file_info = requests.head(url, headers = hdr)
                                         flask_app.logger.info("Message file: {}\ninfo: {}".format(url, file_info.headers))
                                         if file_info.headers["Content-Type"] in SUSPECT_MIME_TYPES:
-                                            send_compliance_message(wxt_client, event.data.roomId, "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space")          
+                                            xargs = {
+                                                "attachments": [bc.wrap_form(bc.SP_LINK_FORM)]
+                                            }
+                                            send_compliance_message(wxt_client, event.data.roomId,
+                                                "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
+                                                xargs)          
                                             wxt_client.messages.delete(event.data.id)                                  
 
                     
@@ -426,7 +433,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
         finally:
             time.sleep(check_interval)
             
-def send_compliance_message(wxt_client, room_id, message):
+def send_compliance_message(wxt_client, room_id, message, xargs):
     my_membership_list = wxt_client.memberships.list(roomId = room_id, personId = wxt_user_id)
     my_membership = None
     for my_membership in my_membership_list:
@@ -434,7 +441,7 @@ def send_compliance_message(wxt_client, room_id, message):
     if not my_membership:
         my_membership = wxt_client.memberships.create(roomId = room_id, personId = wxt_user_id)
         
-    wxt_client.messages.create(roomId = room_id, markdown = message)
+    wxt_client.messages.create(roomId = room_id, markdown = message, **xargs)
     wxt_client.memberships.delete(my_membership.id)
 
 """
