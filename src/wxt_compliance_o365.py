@@ -230,6 +230,8 @@ def get_o365_account_noauth():
     return account
     
 def o365_check_token():
+    global o365_account_changed
+    
     account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
     
     if not account.is_authenticated:
@@ -240,6 +242,7 @@ def o365_check_token():
             flask_app.logger.debug("Refresh O365 authorization, long lived: {}".format(token.is_long_lived))
             con.refresh_token()
             flask_app.logger.debug("Refresh O365 authorization done")
+            o365_account_changed = True
 
     # query_condition = "$filter=userType eq 'Guest' and mail eq '{}'".format(event.data.personEmail)
     query_condition = "userType eq 'Guest' and mail eq 'nonexistent@perlovka.guru'"
@@ -670,7 +673,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
 
             # verify and renew the O365 token
             if (datetime.utcnow() - o365_token_last_check).total_seconds() > O365_API_CHECK_INTERVAL:
-                # o365_check_token()
+                o365_check_token()
                 o365_token_last_check = datetime.utcnow()
 
         except Exception as e:
