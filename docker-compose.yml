@@ -13,7 +13,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: dotenv -f .env_docker run python wxt_compliance_o365.py -vv -c
+    # command: dotenv -f .env_docker run python wxt_compliance_o365.py -vv -c
+    command: python wxt_compliance_o365.py -vv -c
     container_name: webex-compliance-o365
     depends_on:
       - dynamodb
@@ -21,8 +22,18 @@ services:
       - "5052:5050"
     environment:
       PYTHONUNBUFFERED: 'true'
-    env_file:
-      - '.env_docker'
+      # TESTVAR: "from_compose"
+      #
+      # available environment variables in the image (see what TESTVAR does)
+      # uncomment and set to your values:
+      #
+      # WEBEX_INTEGRATION_ID = "your_webex_integration_id"
+      # WEBEX_INTEGRATION_CLIENT_SECRET = "your_webex_integration_client_secret"
+      # REDIRECT_URI = "your_webex_redirect_uri" # default: "http://localhost:5050/manager"
+      # O365_TENANT_ID = "your_o365_tenant_id"
+      # O365_CLIENT_ID = "your_o365_client_id"
+      # O365_OBJECT_ID = "your_o365_object_id"
+      # O365_CLIENT_SECRET = "your_o365_client_secret"
     restart: always
     networks:
       - wx_o365_net

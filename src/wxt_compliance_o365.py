@@ -782,6 +782,8 @@ if __name__ == "__main__":
     
     flask_app.logger.info("Using database: {} - {}".format(os.getenv("DYNAMODB_ENDPOINT_URL"), os.getenv("DYNAMODB_TABLE_NAME")))
     
+    flask_app.logger.info("TESTVAR: {}".format(os.getenv("TESTVAR")))
+    
     wxt_compliance = args.compliance
     wxt_resource = args.resource
     wxt_type = args.type
