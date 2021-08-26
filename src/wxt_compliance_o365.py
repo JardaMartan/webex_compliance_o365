@@ -616,6 +616,13 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                                         wxt_client.messages.create(roomId = event.data.roomId,
                                             markdown = "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
                                             attachments = [bc.wrap_form(bc.SP_WARNING_FORM)])
+                                    else:
+                                        xargs = {
+                                            "attachments": [bc.wrap_form(bc.SP_WARNING_FORM)]
+                                        }
+                                        send_compliance_message(wxt_client, event.data.roomId,
+                                            "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
+                                            xargs)
                                         
                                 # TODO: check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
                                 if room_info.teamId:
