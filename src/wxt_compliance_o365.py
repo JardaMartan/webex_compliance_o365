@@ -196,7 +196,7 @@ def refresh_tokens_for_key(token_key):
         flask_app.logger.error("Client Id and Secret loading error: {}".format(e))
         return "Error refreshing an access token. Client Id and Secret loading error: {}".format(e)
         
-    return new_tokens
+    return "Tokens refreshed for {}".format(token_key)
     
 # O365
 def get_o365_account(user_id, org_id, resource = None):
@@ -435,22 +435,8 @@ def token_refresh():
     if token_key is None:
         return "Please provide a user id"
     
-    return refresh_token_for_key(token_key)
+    return refresh_tokens_for_key(token_key)
     
-def refresh_token_for_key(token_key):
-    tokens = get_tokens_for_key(token_key)
-    integration_api = WebexTeamsAPI()
-    client_id = os.getenv("WEBEX_INTEGRATION_CLIENT_ID")
-    client_secret = os.getenv("WEBEX_INTEGRATION_CLIENT_SECRET")
-    try:
-        new_tokens = AccessTokenAbs(integration_api.access_tokens.refresh(client_id, client_secret, tokens.refresh_token).json_data)
-        save_tokens(token_key, new_tokens)
-    except ApiError as e:
-        flask_app.logger.error("Client Id and Secret loading error: {}".format(e))
-        return "Error refreshing an access token. Client Id and Secret loading error: {}".format(e)
-        
-    return "token refresh for key {} done".format(token_key)
-
 """
 Manual token refresh of all users. Not needed if the thread is running.
 """
@@ -460,7 +446,7 @@ def token_refresh_all():
     user_tokens = ddb.get_db_record_by_secondary_key("TOKENS")
     for token in user_tokens:
         flask_app.logger.debug("Refreshing: {} token".format(token["pk"]))
-        results += refresh_token_for_key(token["pk"])+"\n"
+        results += refresh_tokens_for_key(token["pk"])+"\n"
     
     return results
 
@@ -556,12 +542,14 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                     token_refreshed = False
                 else:
                     flask_app.logger.error("No access tokens for key {}. Authorize the user first.".format(wxt_token_key))
-            else:
+                    
+            if tokens:
     # renew access token using refresh token if needed
                 token_delta = datetime.fromtimestamp(float(tokens.expires_at)) - datetime.utcnow()
                 if token_delta.total_seconds() < SAFE_TOKEN_DELTA:
                     flask_app.logger.info("Access token is about to expire, renewing...")
-                    tokens = refresh_tokens_for_key(wxt_token_key)
+                    refresh_tokens_for_key(wxt_token_key)
+                    tokens = get_tokens_for_key(wxt_token_key)
                     wxt_client = WebexTeamsAPI(access_token=tokens.access_token)
                     new_client = True
                     
