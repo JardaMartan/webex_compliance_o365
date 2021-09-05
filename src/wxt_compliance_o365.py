@@ -503,6 +503,12 @@ No additional user authentication is required.
 def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_resource=None, wx_type=None, wx_actor_email=None):
     global wxt_username, wxt_user_id, token_refreshed, o365_account_changed
 
+# TODO:
+# 1. transition to a Bot account as a Team member
+# 2. threading
+# 3. check how many reponses are returned (max = 100)
+# 4. add env variable for testers
+
     tokens = None
     wxt_client = None
     
