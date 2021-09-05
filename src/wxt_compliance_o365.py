@@ -602,13 +602,17 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                                     if room_info.teamId:
                                         flask_app.logger.info("Room is part of a team")
                                         if event.type == "created":
-                                            my_team_membership_list = wxt_client.team_memberships.list(room_info.teamId)
                                             my_team_membership = None
-                                            for team_membership in my_team_membership_list:
-                                                if team_membership.personId == wxt_user_id:
-                                                    my_team_membership = team_membership
-                                                    flask_app.logger.info("existing team membership: {}".format(my_team_membership))
-                                                    break
+                                            try:
+                                                my_team_membership_list = wxt_bot.team_memberships.list(room_info.teamId)
+                                                for team_membership in my_team_membership_list:
+                                                    if team_membership.personId == wxt_bot_id:
+                                                        my_team_membership = team_membership
+                                                        flask_app.logger.info("existing team membership: {}".format(my_team_membership))
+                                                        break
+                                            except ApiError as e:
+                                                flask_app.logger.info("New team created")
+                                                
                                             if not my_team_membership:
                                                 # somehow team membership API doesn't work
                                                 # my_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_user_id, isModerator = True)
@@ -650,7 +654,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                                 # TODO: check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
                                 if room_info.teamId:
                                     flask_app.logger.info("Check O365 Group relationship")
-                                    team_info = wxt_client.teams.get(room_info.teamId)
+                                    team_info = wxt_bot.teams.get(room_info.teamId)
                                     o365_group = find_o365_group(o365_account, team_info.name)
                                     if o365_group:
                                         flask_app.logger.info("Team name {}, o365 group: {}".format(team_info.name, o365_group))
@@ -791,7 +795,10 @@ def find_o365_group(o365_account, group_name = None):
     if result.ok:
         res_json = result.json()
         if group_name:
-            return res_json["value"][0]
+            try:
+                return res_json["value"][0]
+            except IndexError:
+                return None
         else:
             return res_json["value"]
     else:
