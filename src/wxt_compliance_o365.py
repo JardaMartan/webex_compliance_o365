@@ -444,37 +444,6 @@ def o365_do_auth():
         return redirect(url_for("authdone"))
     else:
         return "Authentication failed: {}".format(result)
-
-"""
-Manual token refresh of a single user. Not needed if the thread is running.
-"""
-@flask_app.route("/tokenrefresh", methods=["GET"])
-def token_refresh():
-    token_key = request.args.get("token_key")
-    if token_key is None:
-        return "Please provide a user id"
-    
-    return refresh_tokens_for_key(token_key)
-    
-"""
-Manual token refresh of all users. Not needed if the thread is running.
-"""
-@flask_app.route("/tokenrefreshall", methods=["GET"])
-def token_refresh_all():
-    results = ""
-    user_tokens = ddb.get_db_record_by_secondary_key("TOKENS")
-    for token in user_tokens:
-        flask_app.logger.debug("Refreshing: {} token".format(token["pk"]))
-        results += refresh_tokens_for_key(token["pk"])+"\n"
-    
-    return results
-
-# TODO: manual query of events API
-@flask_app.route("/queryevents", methods=["GET"])
-def query_events():
-    results = ""
-    
-    return results
     
 @flask_app.route("/o365wh", methods=["GET", "POST"])
 def o365_webhook():
