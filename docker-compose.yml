@@ -19,7 +19,7 @@ services:
     depends_on:
       - dynamodb
     ports:
-      - "5052:5050"
+      - "5050:5050"
     environment:
       PYTHONUNBUFFERED: 'true'
       # TESTVAR: "from_compose"
