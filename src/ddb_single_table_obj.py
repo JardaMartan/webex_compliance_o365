@@ -132,6 +132,7 @@ class DDB_Single_Table():
     def save_db_record(self, pk, sk, pvalue, **items):
         if pvalue == "":
             pvalue = " "
+        pvalue = str(pvalue)
         if isinstance(items, dict):
             items = json.loads(json.dumps(items), parse_float=Decimal)
             for (key, value) in items.items():  # fix 'empty string' problem in DynamoDB
