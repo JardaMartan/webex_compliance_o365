@@ -40,7 +40,7 @@ services:
       - wx_o365_net
     image: jardamartan/webex_compliance_o365
 
-  dynamodbo_365:
+  dynamodb_o365:
     build:
       context: .
       dockerfile: Dockerfile-dynamo
