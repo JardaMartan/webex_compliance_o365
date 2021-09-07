@@ -118,6 +118,8 @@ O365_LOCAL_USER_KEY = "LOCAL"
 O365_ACCOUNT_KEY = "GENERIC"
 O365_API_CHECK_INTERVAL = 300 # seconds
 
+TIMESTAMP_KEY = "LAST_CHECK"
+
 def sigterm_handler(_signo, _stack_frame):
     "When sysvinit sends the TERM signal, cleanup before exiting."
 
@@ -255,6 +257,20 @@ def o365_check_token():
     for user in user_dir:
         flask_app.logger.info("AAD dummy query result: {}".format([user.mail, user.user_principal_name, user.display_name]))
     
+def save_timestamp(timestamp_key, timestamp):
+    ddb.save_db_record(timestamp_key, "TIMESTAMP", timestamp)
+    
+def load_timestamp(timestamp_key):
+    db_timestamp = ddb.get_db_record(timestamp_key, "TIMESTAMP")
+    flask_app.logger.debug("Loaded timestamp from db: {}".format(db_timestamp))
+    
+    try:
+        res = float(db_timestamp["pvalue"])
+        return res
+    except Exception as e:
+        flask_app.logger.debug("timestamp exception: {}".format(e))
+        return None
+
 # Flask part of the code
 
 """
@@ -519,7 +535,14 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
         xargs["type"] = wx_type
     flask_app.logger.debug("Additional args: {}".format(xargs))
     
-    from_time = datetime.utcnow()
+    # load last timestamp from DB
+    last_timestamp = load_timestamp(TIMESTAMP_KEY)
+    
+    if last_timestamp is None:
+        from_time = datetime.utcnow()
+    else:
+        from_time = datetime.fromtimestamp(last_timestamp)
+
     o365_token_last_check = datetime.utcnow()
     o365_account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
     
@@ -751,6 +774,8 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                 
                 m365_group_last_check = datetime.utcnow()
 
+            # save timestamp
+            save_timestamp(TIMESTAMP_KEY, to_time.timestamp())
         except Exception as e:
             flask_app.logger.error("check_events() loop exception: {}".format(e))
         finally:
