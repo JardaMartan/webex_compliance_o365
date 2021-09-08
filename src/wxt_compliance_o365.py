@@ -568,10 +568,10 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                 o365_account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
                 o365_account_changed = False
 
+            to_time = datetime.utcnow()
     # query the Events API        
             if wxt_client:
                 try:
-                    to_time = datetime.utcnow()
                     from_stamp = from_time.isoformat(timespec="milliseconds")+"Z"
                     to_stamp = to_time.isoformat(timespec="milliseconds")+"Z"
                     flask_app.logger.debug("check interval {} - {}".format(from_stamp, to_stamp))
