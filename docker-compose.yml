@@ -27,14 +27,14 @@ services:
       # available environment variables in the image (see what TESTVAR does)
       # uncomment and set to your values:
       #
-      # WEBEX_INTEGRATION_ID: "your_webex_integration_id"
-      # WEBEX_INTEGRATION_CLIENT_SECRET: "your_webex_integration_client_secret"
+      WEBEX_INTEGRATION_ID: "your_webex_integration_id"
+      WEBEX_INTEGRATION_CLIENT_SECRET: "your_webex_integration_client_secret"
       # REDIRECT_URI: "your_webex_redirect_uri" # default: "http://localhost:5050/manager"
-      # BOT_ACCESS_TOKEN: "your_bot_access_token"
-      # O365_TENANT_ID: "your_o365_tenant_id"
-      # O365_CLIENT_ID: "your_o365_client_id"
-      # O365_OBJECT_ID: "your_o365_object_id"
-      # O365_CLIENT_SECRET: "your_o365_client_secret"
+      BOT_ACCESS_TOKEN: "your_bot_access_token"
+      O365_TENANT_ID: "your_o365_tenant_id"
+      O365_CLIENT_ID: "your_o365_client_id"
+      O365_OBJECT_ID: "your_o365_object_id"
+      O365_CLIENT_SECRET: "your_o365_client_secret"
       DYNAMODB_ENDPOINT_URL: "http://dynamodb-o365:8000"
       DYNAMODB_TABLE_NAME: "o365_bot_test"
       AWS_DEFAULT_REGION: "us-east-1"
