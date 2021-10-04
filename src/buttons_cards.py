@@ -69,7 +69,7 @@ SP_LINK_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Pro sdílení MS Office dokumentů připojte k tomuto Prostoru SharePoint úložiště.",
+                            "text": "Pro sdílení dokumentů připojte k tomuto Prostoru SharePoint úložiště.",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -122,7 +122,7 @@ SP_WARNING_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Pro sdílení MS Office dokumentů zkontrolujte, že je k tomuto Prostoru připojeno SharePoint úložiště.",
+                            "text": "Pro sdílení dokumentů zkontrolujte, že je k tomuto Prostoru připojeno SharePoint úložiště.",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -186,7 +186,7 @@ USER_WARNING_FORM = {
         },
         {
             "type": "TextBlock",
-            "text": "Jestliže se jedná o hosta, nechte mu vytvořit účet v IDM a pak ho přidejte do Office365 skupiny \"{{group_name}}\"",
+            "text": "Jestliže se jedná o hosta, nechte mu vytvořit účet v IDM.", # a pak ho přidejte do Office365 skupiny \"{{group_name}}\"",
             "wrap": True
         },
         {

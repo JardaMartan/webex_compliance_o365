@@ -88,6 +88,10 @@ SUSPECT_MIME_TYPES = ["application/msword",
     "application/vnd.ms-powerpoint.slideshow.macroEnabled.12",
     "application/vnd.ms-powerpoint.template.macroEnabled.12",
     "application/pdf"]
+    
+ALLOWED_MIME_TYPES_REGEX = [
+    "image\/.*"
+]
 
 STATE_CHECK = "webex is great" # integrity test phrase
 
@@ -134,14 +138,19 @@ signal.signal(signal.SIGINT, sigterm_handler)
 
 thread_executor = concurrent.futures.ThreadPoolExecutor()
 wxt_username = "COMPLIANCE"
-sxt_user_id = None
+wxt_user_id = None
 wxt_token_key = "COMPLIANCE"
-wxt_resource = None
-wxt_type = None
-wxt_actor_email = None
-wxt_compliance = False
+wxt_bot_id = None
 token_refreshed = False
 o365_account_changed = False
+
+options = {
+    "file_events": False,
+    "notify": False,
+    "m365_user_sync": False,
+    "webex_user_sync": False,
+    "check_aad_user": False
+}
 
 class AccessTokenAbs(AccessToken):
     def __init__(self, access_token_json):
@@ -285,8 +294,8 @@ def startup():
     flask_app.logger.debug("initialize DDB object {}".format(ddb))
         
     flask_app.logger.debug("Starting event check...")
-    # check_events(EVENT_CHECK_INTERVAL, wxt_compliance, wxt_resource, wxt_type, wxt_actor_email)
-    thread_executor.submit(check_events, EVENT_CHECK_INTERVAL, wxt_compliance, wxt_resource, wxt_type, wxt_actor_email)
+    # check_events(EVENT_CHECK_INTERVALl)
+    thread_executor.submit(check_events, EVENT_CHECK_INTERVAL)
     # o365_check_token()
 
 @flask_app.route("/")
@@ -485,8 +494,8 @@ Doesn't work until "wxt_username" runs through OAuth grant flow above.
 Access token is automatically refreshed if needed using Refresh Token.
 No additional user authentication is required.
 """
-def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_resource=None, wx_type=None, wx_actor_email=None):
-    global wxt_username, wxt_user_id, token_refreshed, o365_account_changed
+def check_events(check_interval=EVENT_CHECK_INTERVAL):
+    global wxt_username, wxt_user_id, wxt_bot_id, token_refreshed, o365_account_changed, options
 
 # TODO:
 # 1. transition to a Bot account as a Team member
@@ -494,28 +503,26 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
 # 3. check how many reponses are returned (max = 100)
 # 4. add env variable for testers
 
-    tokens = None
-    wxt_client = None
-    
-    xargs = {}
-    if wx_resource is not None:
-        xargs["resource"] = wx_resource
-    if wx_type is not None:
-        xargs["type"] = wx_type
-    flask_app.logger.debug("Additional args: {}".format(xargs))
-    
-    # load last timestamp from DB
-    last_timestamp = load_timestamp(TIMESTAMP_KEY)
-    
-    if last_timestamp is None:
-        from_time = datetime.utcnow()
-    else:
-        from_time = datetime.fromtimestamp(last_timestamp)
+    try:
+        tokens = None
+        wxt_client = None
+        
+        xargs = {}
+        
+        # load last timestamp from DB
+        last_timestamp = load_timestamp(TIMESTAMP_KEY)
+        
+        if last_timestamp is None:
+            from_time = datetime.utcnow()
+        else:
+            from_time = datetime.fromtimestamp(last_timestamp)
 
-    o365_token_last_check = datetime.utcnow()
-    o365_account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
-    
-    m365_group_last_check = datetime.utcnow()
+        o365_token_last_check = datetime.utcnow()
+        o365_account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
+        
+        m365_group_last_check = datetime.utcnow()
+    except Exception as e:
+        flask_app.logger.error("check_events() start exception: {}".format(e))
     
     try:
         wxt_bot = WebexTeamsAPI(access_token = os.getenv("BOT_ACCESS_TOKEN"))
@@ -535,15 +542,6 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                 if tokens:
                     wxt_client = WebexTeamsAPI(access_token=tokens.access_token)
 
-    # get actorId if required
-                    if wx_actor_email is not None:
-                        try:
-                            wx_actor_list = wxt_client.people.list(email=wx_actor_email)
-                            for person in wx_actor_list:
-                                xargs["actorId"] = person.id
-                        except ApiError as e:
-                            flask_app.logger.error("People list API request error: {}".format(e))
-                    
                     user_info = wxt_client.people.me()
                     flask_app.logger.debug("Got user info: {}".format(user_info))
                     wx_org_id = user_info.orgId
@@ -575,122 +573,10 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                     from_stamp = from_time.isoformat(timespec="milliseconds")+"Z"
                     to_stamp = to_time.isoformat(timespec="milliseconds")+"Z"
                     flask_app.logger.debug("check interval {} - {}".format(from_stamp, to_stamp))
-                    if wx_compliance:
-                        event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
-                        for event in event_list:
-                            flask_app.logger.info("Event: {}".format(event))
-                            
-                            actor = wxt_client.people.get(event.actorId)
-                            
-                            # TODO: information logging to an external system
-                            # flask_app.logger.info("{} {} {} {} by {}\n data: {}".format(event.created, event.resource, event.type, event.data.personEmail, actor.emails[0], event))
-                            
-                            room_info = wxt_client.rooms.get(event.data.roomId)
-                            flask_app.logger.info("Room info: {}".format(room_info))
-                            
-                            if event.resource == "memberships" and event.type in ["created","deleted"] and room_info.type == "group" and not event.actorId == wxt_user_id:
-                                if event.type == "created" and room_info.creatorId == event.data.personId:                             
-                                    flask_app.logger.info("send notification")
-                                    if room_info.teamId:
-                                        flask_app.logger.info("Room is part of a team")
-                                        if event.type == "created":
-                                            my_team_membership = None
-                                            try:
-                                                my_team_membership_list = wxt_bot.team_memberships.list(room_info.teamId)
-                                                for team_membership in my_team_membership_list:
-                                                    if team_membership.personId == wxt_bot_id:
-                                                        my_team_membership = team_membership
-                                                        flask_app.logger.info("existing team membership: {}".format(my_team_membership))
-                                                        break
-                                            except ApiError as e:
-                                                flask_app.logger.info("New team created")
-                                                
-                                            if not my_team_membership:
-                                                # somehow team membership API doesn't work
-                                                # my_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_user_id, isModerator = True)
-                                                flask_app.logger.debug("Adding myself as Team moderator")
-                                                my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id, isModerator = True)
-                                                flask_app.logger.debug("Adding bot as Team moderator")
-                                                bot_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_bot_id, isModerator = True)
-                                                flask_app.logger.debug("Removing myself as Team moderator")
-                                                wxt_client.memberships.delete(my_membership.id)
-                                                flask_app.logger.debug("Send compliance message")
-                                                wxt_bot.messages.create(roomId = room_info.id,
-                                                    markdown = "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                                    attachments = [bc.wrap_form(bc.SP_WARNING_FORM)])
-                                            else:
-                                                # flask_app.logger.debug("Adding myself to the Team Space")
-                                                # my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id)
-                                                flask_app.logger.debug("Send compliance message")
-                                                xargs = {
-                                                    "attachments": [bc.wrap_form(bc.SP_WARNING_FORM)]
-                                                }
-                                                send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
-                                                    "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                                    xargs)
-                                        
-                                        # xargs = {
-                                        #     "attachments": [bc.wrap_form(bc.SP_WARNING_FORM)]
-                                        # }
-                                        # send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
-                                        #     "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                        #     xargs, add_delete_me = False)
-                                    else:
-                                        xargs = {
-                                            "attachments": [bc.wrap_form(bc.SP_WARNING_FORM)]
-                                        }
-                                        send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
-                                            "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                            xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)
-                                        
-                                # TODO: check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
-                                if room_info.teamId:
-                                    flask_app.logger.info("Check O365 Group relationship")
-                                    team_info = wxt_bot.teams.get(room_info.teamId)
-                                    o365_group = find_o365_group(o365_account, team_info.name)
-                                    if o365_group:
-                                        flask_app.logger.info("Team name {}, o365 group: {}".format(team_info.name, o365_group))
-                                        user_account = get_o365_user_account(o365_account, event.data.personEmail)
-                                        if user_account:
-                                            if event.type == "created":
-                                                flask_app.logger.info("add o365 group member: {}".format(user_account["user_info"].user_principal_name))
-                                                add_o365_group_member(o365_account, o365_group["id"], user_account["user_info"].object_id)
-                                            else:
-                                                flask_app.logger.info("delete o365 group member: {}".format(user_account["user_info"].user_principal_name))
-                                                delete_o365_group_member(o365_account, o365_group["id"], user_account["user_info"].object_id)
-                                        else:
-                                            if event.type == "created":
-                                                flask_app.logger.info("user {} not found in directory".format(event.data.personEmail))
-                                                if hasattr(event.data, "personDisplayName"):
-                                                    display_name = event.data.personDisplayName
-                                                else:
-                                                    display_name = ""
-                                                form = bc.nested_replace_dict(bc.USER_WARNING_FORM, {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name})
-                                                # xargs = {
-                                                #     "attachments": [bc.wrap_form(form)]
-                                                # }
-                                                # send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId, "Uživatel nemá O365 účet.", xargs, add_delete_me = False)
-                                                wxt_bot.messages.create(roomId = event.data.roomId, markdown = "Uživatel nemá O365 účet.", attachments = [bc.wrap_form(form)])
-                                    else:
-                                        flask_app.logger.info("No corresponding O365 Group for Team \"{}\"".format(team_info.name))
-                                            
-                            if event.resource == "messages" and event.type == "created" and not event.actorId == wxt_user_id:
-                                # message_info = wxt_client.messages.get(event.data.id)
-                                # flask_app.logger.info("Message info: {}".format(message_info))
-                                if hasattr(event.data, "files"):
-                                    hdr = {"Authorization": "Bearer " + wxt_client.access_token}
-                                    for url in event.data.files:
-                                        file_info = requests.head(url, headers = hdr)
-                                        flask_app.logger.info("Message file: {}\ninfo: {}".format(url, file_info.headers))
-                                        if file_info.headers["Content-Type"] in SUSPECT_MIME_TYPES:
-                                            wxt_client.messages.delete(event.data.id)
-                                            xargs = {
-                                                "attachments": [bc.wrap_form(bc.SP_LINK_FORM)]
-                                            }
-                                            send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
-                                                "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                                xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)          
-
+                    event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
+                    for event in event_list:
+                        # TODO: do this in thread
+                        handle_event(event, wxt_client, wxt_bot, o365_account, options)
                     
                 except ApiError as e:
                     flask_app.logger.error("API request error: {}".format(e))
@@ -702,7 +588,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                 o365_check_token()
                 o365_token_last_check = datetime.utcnow()
                 
-            if (datetime.utcnow() - m365_group_last_check).total_seconds() > M365_GROUP_CHECK_INTERVAL:
+            if (options["m365_user_sync"] or options["webex_user_sync"]) and (datetime.utcnow() - m365_group_last_check).total_seconds() > M365_GROUP_CHECK_INTERVAL:
                 # TODO:
                 # 1. load all Wx Teams
                 # 2. load all M365 Groups - name + id only
@@ -727,17 +613,18 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
                                         break
                                 if user_found:
                                     del m365_group_member_list[i]
-                                else:
+                                elif options["m365_user_sync"]:
                                     if wxt_team_member.isModerator:
                                         flask_app.logger.info("User {} not found in M365 Group, however he's moderator, skipping...".format(wxt_team_member.personEmail))
                                     else:
                                         flask_app.logger.info("User {} not found in M365 Group, deleting from Webex Team...".format(wxt_team_member.personEmail))
                                         wxt_bot.team_memberships.delete(wxt_team_member.id)
-                
-                            flask_app.logger.info("Users missing in the Webex Team {}, adding to Webex Team...".format(m365_group_member_list))
-                            for m365_group_member in m365_group_member_list:
-                                flask_app.logger.info("Adding user {} to the Webex Team".format(m365_group_member["mail"]))
-                                wxt_bot.team_memberships.create(wxt_team.id, personEmail = m365_group_member["mail"])
+                                                    
+                            if options["m365_user_sync"]:
+                                flask_app.logger.info("Users missing in the Webex Team {}, adding to Webex Team...".format(m365_group_member_list))
+                                for m365_group_member in m365_group_member_list:
+                                    flask_app.logger.info("Adding user {} to the Webex Team".format(m365_group_member["mail"]))
+                                    wxt_bot.team_memberships.create(wxt_team.id, personEmail = m365_group_member["mail"])
                                 
                             break
                 
@@ -749,6 +636,143 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL, wx_compliance=False, wx_re
             flask_app.logger.error("check_events() loop exception: {}".format(e))
         finally:
             time.sleep(check_interval)
+            
+def handle_event(event, wxt_client, wxt_bot, o365_account, options):
+    try:
+        flask_app.logger.info("Event: {}".format(event))
+        
+        actor = wxt_client.people.get(event.actorId)
+        config = load_config()
+        actor_list = config.get("actors")
+        flask_app.logger.debug("configured actors: {}".format(actor_list))
+        if actor.emails[0] not in actor_list:
+            flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
+            return
+        
+        room_info = wxt_client.rooms.get(event.data.roomId)
+        flask_app.logger.info("Room info: {}".format(room_info))
+        
+        if event.resource == "memberships" and event.type in ["created","deleted"] and room_info.type == "group" and not event.actorId == wxt_user_id:
+            if event.type == "created" and room_info.creatorId == event.data.personId:                             
+                flask_app.logger.info("send notification")
+                if room_info.teamId:
+                    flask_app.logger.info("Room is part of a team")
+                    if event.type == "created":
+                        my_team_membership = None
+                        try:
+                            my_team_membership_list = wxt_bot.team_memberships.list(room_info.teamId)
+                            for team_membership in my_team_membership_list:
+                                if team_membership.personId == wxt_bot_id:
+                                    my_team_membership = team_membership
+                                    flask_app.logger.info("existing team membership: {}".format(my_team_membership))
+                                    break
+                        except ApiError as e:
+                            flask_app.logger.info("New team created")
+                            
+                        if not my_team_membership:
+                            # somehow team membership API doesn't work
+                            # my_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_user_id, isModerator = True)
+                            flask_app.logger.debug("Adding myself as Team moderator")
+                            my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id, isModerator = True)
+                            flask_app.logger.debug("Adding bot as Team moderator")
+                            bot_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_bot_id, isModerator = True)
+                            flask_app.logger.debug("Removing myself as Team moderator")
+                            wxt_client.memberships.delete(my_membership.id)
+                            if options["notify"]:
+                                flask_app.logger.debug("Send compliance message")
+                                wxt_bot.messages.create(roomId = room_info.id,
+                                    markdown = "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
+                                    attachments = [bc.wrap_form(bc.SP_WARNING_FORM)])
+                        else:
+                            # flask_app.logger.debug("Adding myself to the Team Space")
+                            # my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id)
+                            if options["notify"]:
+                                flask_app.logger.debug("Send compliance message")
+                                xargs = {
+                                    "attachments": [bc.wrap_form(bc.SP_WARNING_FORM)]
+                                }
+                                send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
+                                    "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
+                                    xargs)
+                                                        
+                else:
+                    xargs = {
+                        "attachments": [bc.wrap_form(bc.SP_WARNING_FORM)]
+                    }
+                    send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
+                        "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
+                        xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)
+                        
+            # check if a newly added user has an account in aad
+            if event.type == "created" and room_info.teamId and options["check_aad_user"]:
+                team_info = wxt_bot.teams.get(room_info.teamId)
+                user_account = get_o365_user_account(o365_account, event.data.personEmail)
+                if not user_account:
+                    flask_app.logger.info("user {} not found in directory".format(event.data.personEmail))
+                    if hasattr(event.data, "personDisplayName"):
+                        display_name = event.data.personDisplayName
+                    else:
+                        display_name = ""
+                    form = bc.nested_replace_dict(bc.USER_WARNING_FORM, {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name})
+                    # xargs = {
+                    #     "attachments": [bc.wrap_form(form)]
+                    # }
+                    # send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId, "Uživatel nemá O365 účet.", xargs, add_delete_me = False)
+                    wxt_bot.messages.create(roomId = event.data.roomId, markdown = "Uživatel nemá O365 účet.", attachments = [bc.wrap_form(form)])
+                    
+            # TODO: check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
+            if room_info.teamId and options["webex_user_sync"]:
+                flask_app.logger.info("Check O365 Group relationship")
+                if not team_info:
+                    team_info = wxt_bot.teams.get(room_info.teamId)
+                o365_group = find_o365_group(o365_account, team_info.name)
+                if o365_group:
+                    flask_app.logger.info("Team name {}, o365 group: {}".format(team_info.name, o365_group))
+                    if not user_account:
+                        user_account = get_o365_user_account(o365_account, event.data.personEmail)
+                    if user_account:
+                        if event.type == "created":
+                            flask_app.logger.info("add o365 group member: {}".format(user_account["user_info"].user_principal_name))
+                            add_o365_group_member(o365_account, o365_group["id"], user_account["user_info"].object_id)
+                        else:
+                            flask_app.logger.info("delete o365 group member: {}".format(user_account["user_info"].user_principal_name))
+                            delete_o365_group_member(o365_account, o365_group["id"], user_account["user_info"].object_id)
+                else:
+                    flask_app.logger.info("No corresponding O365 Group for Team \"{}\"".format(team_info.name))
+                        
+        if event.resource == "messages" and event.type == "created" and not event.actorId == wxt_user_id:
+            # message_info = wxt_client.messages.get(event.data.id)
+            # flask_app.logger.info("Message info: {}".format(message_info))
+            if options["file_events"] and hasattr(event.data, "files"):
+                hdr = {"Authorization": "Bearer " + wxt_client.access_token}
+                for url in event.data.files:
+                    file_info = requests.head(url, headers = hdr)
+                    flask_app.logger.info("Message file: {}\ninfo: {}".format(url, file_info.headers))
+                    
+                    # check for disallowed MIME types
+                    """
+                    allowed_found = True
+                    if file_info.headers["Content-Type"] in SUSPECT_MIME_TYPES:
+                        allowed_found = False
+                    """
+                    
+                    # check for allowed MIME types
+                    allowed_found = False
+                    for allowed_regex in ALLOWED_MIME_TYPES_REGEX:
+                        if re.match(allowed_regex, file_info.headers["Content-Type"]):
+                            allowed_found = True
+                            break
+                            
+                    if not allowed_found:
+                        wxt_client.messages.delete(event.data.id)
+                        xargs = {
+                            "attachments": [bc.wrap_form(bc.SP_LINK_FORM)]
+                        }
+                        send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
+                            "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
+                            xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)          
+    except Exception as e:
+        flask_app.logger.error("handle_event() exception: {}".format(e))
             
 def send_compliance_message(wxt_client, wxt_user_id, room_id, message, xargs, act_on_behalf_client = None, act_on_behalf_client_id = None):
     membership_found = False
@@ -830,6 +854,11 @@ def get_o365_group_members(o365_account, group_id):
         res_json = result.json()
         return res_json["value"]
         
+def load_config():
+    with open("/config/config.json") as file:
+        config = json.load(file)
+    return config
+        
 """
 Independent thread startup, see:
 https://networklore.com/start-task-with-flask/
@@ -866,10 +895,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--verbose', action='count', help="Set logging level by number of -v's, -v=WARN, -vv=INFO, -vvv=DEBUG")
-    parser.add_argument("-c", "--compliance", action='store_true', help="Monitor compliance events, default: no")
-    parser.add_argument("-r", "--resource", type = str, help="Resource type (messages, memberships), default: all")
-    parser.add_argument("-t", "--type", type = str, help="Event type (created, updated, deleted), default: all")
-    parser.add_argument("-a", "--actor", type = str, help="Monitored actor id (user's e-mail), default: all")
+    parser.add_argument("-f", "--file_events", action='store_true', help="Monitor file events, default: no")
+    parser.add_argument("-n", "--notify", action='store_true', help="Send notification when creating a new Space, default: no")
+    parser.add_argument("-m", "--m365_user_sync", action='store_true', help="Sync M365 Group members to Webex Team of the same name, default: no")
+    parser.add_argument("-c", "--check_aad_user", action='store_true', help="Check if a newly added user to a Webex Team has an account in Azure AD, default: no")
+    parser.add_argument("-w", "--webex_user_sync", action='store_true', help="Sync Webex Team membeers to M365 Group of the same name, default: no")
     
     args = parser.parse_args()
     if args.verbose:
@@ -886,10 +916,17 @@ if __name__ == "__main__":
     
     flask_app.logger.info("TESTVAR: {}".format(os.getenv("TESTVAR")))
     
-    wxt_compliance = args.compliance
-    wxt_resource = args.resource
-    wxt_type = args.type
-    wxt_actor_email = args.actor
+    options["file_events"] = args.file_events
+    options["notify"] = args.notify
+    options["m365_user_sync"] = args.m365_user_sync
+    options["webex_user_sync"] = args.webex_user_sync
+    options["check_aad_user"] = args.check_aad_user
         
+    flask_app.logger.info("OPTIONS: {}".format(options))
+    
+    config = load_config()
+
+    flask_app.logger.info("CONFIG: {}".format(config))
+
     start_runner()
     flask_app.run(host="0.0.0.0", port=5050)
