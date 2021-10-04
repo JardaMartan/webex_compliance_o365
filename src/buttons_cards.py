@@ -89,7 +89,7 @@ SP_LINK_FORM = {
                 {
                     "type": "Action.OpenUrl",
                     "title": "Návod",
-                    "url": "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
+                    "url": "{{url_onedrive_link}}"
                 }
             ],
             "horizontalAlignment": "Right"
@@ -142,7 +142,7 @@ SP_WARNING_FORM = {
                 {
                     "type": "Action.OpenUrl",
                     "title": "Návod",
-                    "url": "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
+                    "url": "{{url_onedrive_link}}"
                 }
             ],
             "horizontalAlignment": "Right"
@@ -195,7 +195,7 @@ USER_WARNING_FORM = {
                 {
                     "type": "Action.OpenUrl",
                     "title": "Přejít do IDM",
-                    "url": "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
+                    "url": "{{url_idm}}"
                 }
             ],
             "horizontalAlignment": "Right"

@@ -682,14 +682,14 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                                 flask_app.logger.debug("Send compliance message")
                                 wxt_bot.messages.create(roomId = room_info.id,
                                     markdown = "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                    attachments = [bc.wrap_form(bc.SP_WARNING_FORM)])
+                                    attachments = [bc.wrap_form(bc.nested_replace_dict(bc.SP_WARNING_FORM, {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))])
                         else:
                             # flask_app.logger.debug("Adding myself to the Team Space")
                             # my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id)
                             if options["notify"]:
                                 flask_app.logger.debug("Send compliance message")
                                 xargs = {
-                                    "attachments": [bc.wrap_form(bc.SP_WARNING_FORM)]
+                                    "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.SP_WARNING_FORM, {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
                                 }
                                 send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
                                     "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
@@ -697,7 +697,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                                                         
                 else:
                     xargs = {
-                        "attachments": [bc.wrap_form(bc.SP_WARNING_FORM)]
+                        "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.SP_WARNING_FORM, {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
                     }
                     send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
                         "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
@@ -713,7 +713,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                         display_name = event.data.personDisplayName
                     else:
                         display_name = ""
-                    form = bc.nested_replace_dict(bc.USER_WARNING_FORM, {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name})
+                    form = bc.nested_replace_dict(bc.USER_WARNING_FORM, {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": os.getenv("URL_IDM")})
                     # xargs = {
                     #     "attachments": [bc.wrap_form(form)]
                     # }
@@ -766,7 +766,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                     if not allowed_found:
                         wxt_client.messages.delete(event.data.id)
                         xargs = {
-                            "attachments": [bc.wrap_form(bc.SP_LINK_FORM)]
+                            "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.SP_LINK_FORM, {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
                         }
                         send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
                             "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
