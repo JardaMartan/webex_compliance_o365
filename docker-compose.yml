@@ -26,47 +26,28 @@ services:
       # TESTVAR: "from_compose"
       #
       # available environment variables in the image (see what TESTVAR does)
-      # uncomment and set to your values:
-      #
-      WEBEX_INTEGRATION_ID: "Y2lzY29zcGFyazovL3VzL0FQUExJQ0FUSU9OL0M5MWU5MDUxNmRlNzBhOGZiOWQ2OWVkOTk0MmRhM2NlMDE2MjdjMTY4ODI3YmYzZGExOGFkYzVkZTE2ZWY1MTI0"
-      WEBEX_INTEGRATION_CLIENT_ID: "your_webex_integration_client_id"
-      WEBEX_INTEGRATION_CLIENT_SECRET: "your_webex_integration_client_secret"
-
-      WEBEX_TEAMS_ACCESS_TOKEN: "dummy"
-
-      BOT_ACCESS_TOKEN: "your_bot_access_token"
-      BOT_ID: "Y2lzY29zcGFyazovL3VzL1BFT1BMRS8wOGZkZmVmZS1hNTc2LTQ2NWMtYmNjNC1iYjU4M2YxYzlmYjA"
-
-      REDIRECT_URI: "http://localhost:5052/manager"
-
-      DYNAMODB_ENDPOINT_URL: "http://dynamodb-o365:8000"
-      DYNAMODB_TABLE_NAME: "o365_bot_test"
-      AWS_DEFAULT_REGION: "us-east-1"
-      AWS_ACCESS_KEY_ID: "dummy"
-      AWS_SECRET_ACCESS_KEY: "dummy"
-
-      O365_CLIENT_ID: "your_o365_client_id"
-      O365_TENANT_ID: "your_o365_tenant_id"
-      O365_OBJECT_ID: "c05164cb-7e2e-4598-9e47-360cedf427cb"
-      O365_CLIENT_SECRET: "your_o365_client_secret"
-      
+      #      
       URL_ONEDRIVE_LINK: "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
       URL_IDM: "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
       
-      # WEBEX_INTEGRATION_ID: "your_webex_integration_id"
-      # WEBEX_INTEGRATION_CLIENT_SECRET: "your_webex_integration_client_secret"
-      # REDIRECT_URI: "your_webex_redirect_uri" # default: "http://localhost:5050/manager"
-      # BOT_ACCESS_TOKEN: "your_bot_access_token"
-      # O365_TENANT_ID: "your_o365_tenant_id"
-      # O365_CLIENT_ID: "your_o365_client_id"
-      # O365_OBJECT_ID: "your_o365_object_id"
-      # O365_CLIENT_SECRET: "your_o365_client_secret"
-      # DYNAMODB_ENDPOINT_URL: "http://dynamodb-o365:8000"
-      # DYNAMODB_TABLE_NAME: "o365_bot_test"
-      # AWS_DEFAULT_REGION: "us-east-1"
-      # AWS_ACCESS_KEY_ID: "dummy"
-      # AWS_SECRET_ACCESS_KEY: "dummy"
-      # WEBEX_TEAMS_ACCESS_TOKEN: "dummy"
+      WEBEX_INTEGRATION_ID: "your_webex_integration_id"
+      WEBEX_INTEGRATION_CLIENT_SECRET: "your_webex_integration_client_secret"
+      REDIRECT_URI: "your_webex_redirect_uri" # default: "http://localhost:5050/manager"
+      BOT_ACCESS_TOKEN: "your_bot_access_token"
+      O365_TENANT_ID: "your_o365_tenant_id"
+      O365_CLIENT_ID: "your_o365_client_id"
+      O365_OBJECT_ID: "your_o365_object_id"
+      O365_CLIENT_SECRET: "your_o365_client_secret"
+      
+      # local dynamodb
+      DYNAMODB_ENDPOINT_URL: "http://dynamodb-o365:8000"
+      DYNAMODB_TABLE_NAME: "o365_bot_test"
+      
+      # no need to change
+      AWS_DEFAULT_REGION: "us-east-1"
+      AWS_ACCESS_KEY_ID: "dummy"
+      AWS_SECRET_ACCESS_KEY: "dummy"
+      WEBEX_TEAMS_ACCESS_TOKEN: "dummy"
     restart: always
     networks:
       - wx_o365_net
