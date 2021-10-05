@@ -23,6 +23,9 @@ services:
       - "5052:5050"
     environment:
       PYTHONUNBUFFERED: 'true'
+      # avoid potential certificate issues when running via proxy, see:
+      # https://stackoverflow.com/questions/48391750/disable-python-requests-ssl-validation-for-an-imported-module
+      CURL_CA_BUNDLE: ''
       # TESTVAR: "from_compose"
       #
       # available environment variables in the image (see what TESTVAR does)
