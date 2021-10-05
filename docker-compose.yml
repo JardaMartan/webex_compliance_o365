@@ -14,7 +14,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # command: dotenv -f .env_docker run python wxt_compliance_o365.py -vv -c
+# usage: wxt_compliance_o365.py [-h] [-v] [-f] [-n] [-m] [-c] [-w]
+# 
+# optional arguments:
+#   -h, --help            show this help message and exit
+#   -v, --verbose         Set logging level by number of -v's, -v=WARN, -vv=INFO, -vvv=DEBUG
+#   -f, --file_events     Monitor file events, default: no
+#   -n, --notify          Send notification when creating a new Space, default: no
+#   -m, --m365_user_sync  Sync M365 Group members to Webex Team of the same name, default: no
+#   -c, --check_aad_user  Check if a newly added user to a Webex Team has an account in Azure AD, default: no
+#   -w, --webex_user_sync Sync Webex Team members to M365 Group of the same name, default: no
     command: python wxt_compliance_o365.py -vv -fnc #-fnmwc
     container_name: webex-compliance-o365
     depends_on:
