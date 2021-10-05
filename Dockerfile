@@ -4,6 +4,11 @@ LABEL maintainer="@jardamartan"
 
 WORKDIR /code
 
+# proxies for the pip install
+#ENV http_proxy http://proxy_host:port
+#ENV https_proxy http://proxy_host:port
+
+
 # copy the dependencies file to the working directory
 COPY requirements.txt .
 
