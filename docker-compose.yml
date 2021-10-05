@@ -38,8 +38,10 @@ services:
       # TESTVAR: "from_compose"
       #
       # available environment variables in the image (see what TESTVAR does)
-      #      
+      #
+      # link to a documentation on how to connect OneDrive/SharePoint to a Space
       URL_ONEDRIVE_LINK: "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
+      # link to a company's IDM
       URL_IDM: "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
       
       WEBEX_INTEGRATION_ID: "your_webex_integration_id"
