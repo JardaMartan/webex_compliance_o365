@@ -724,6 +724,8 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                     # }
                     # send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId, "Uživatel nemá O365 účet.", xargs, add_delete_me = False)
                     wxt_bot.messages.create(roomId = event.data.roomId, markdown = "Uživatel nemá O365 účet.", attachments = [bc.wrap_form(form)])
+                    flask_app.logger.info("Deleting team membership for user {}".format(event.data.personEmail))
+                    wxt_bot.memberships.delete(event.data.id)
                     
             # TODO: check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
             if room_info.teamId and options["webex_user_sync"]:
