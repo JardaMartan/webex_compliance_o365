@@ -12,6 +12,11 @@ from urllib.parse import urlparse, quote, parse_qsl, urlencode, urlunparse
 from webexteamssdk import WebexTeamsAPI, ApiError, AccessToken
 webex_api = WebexTeamsAPI(access_token="12345")
 
+# avoid using a proxy for DynamoDB communication
+import botocore.endpoint
+def _get_proxies(self, url):
+    return None
+botocore.endpoint.EndpointCreator._get_proxies = _get_proxies
 import boto3
 from ddb_single_table_obj import DDB_Single_Table
 
@@ -865,11 +870,15 @@ https://networklore.com/start-task-with-flask/
 """
 def start_runner():
     def start_loop():
+        no_proxies = {
+          "http": None,
+          "https": None,
+        }
         not_started = True
         while not_started:
             logger.info('In start loop')
             try:
-                r = requests.get('http://127.0.0.1:5050/')
+                r = requests.get('https://127.0.0.1:5050/', proxies=no_proxies, verify=False)
                 if r.status_code == 200:
                     logger.info('Server started, quiting start_loop')
                     not_started = False
@@ -929,4 +938,4 @@ if __name__ == "__main__":
     flask_app.logger.info("CONFIG: {}".format(config))
 
     start_runner()
-    flask_app.run(host="0.0.0.0", port=5050)
+    flask_app.run(host="0.0.0.0", port=5050, ssl_context='adhoc')
