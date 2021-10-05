@@ -54,6 +54,11 @@ services:
       O365_OBJECT_ID: "your_o365_object_id"
       O365_CLIENT_SECRET: "your_o365_client_secret"
       
+      # proxy configuration
+      # HTTP_PROXY: "http://proxy_address:port"
+      # HTTPS_PROXY: "http://proxy_address:port"
+      # NO_PROXY: "10.*.*.*,127.*.*.*,*.local"
+      
       # local dynamodb
       DYNAMODB_ENDPOINT_URL: "http://dynamodb-o365:8000"
       DYNAMODB_TABLE_NAME: "o365_bot_test"
