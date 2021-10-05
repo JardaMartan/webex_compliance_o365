@@ -908,7 +908,7 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--notify", action='store_true', help="Send notification when creating a new Space, default: no")
     parser.add_argument("-m", "--m365_user_sync", action='store_true', help="Sync M365 Group members to Webex Team of the same name, default: no")
     parser.add_argument("-c", "--check_aad_user", action='store_true', help="Check if a newly added user to a Webex Team has an account in Azure AD, default: no")
-    parser.add_argument("-w", "--webex_user_sync", action='store_true', help="Sync Webex Team membeers to M365 Group of the same name, default: no")
+    parser.add_argument("-w", "--webex_user_sync", action='store_true', help="Sync Webex Team members to M365 Group of the same name, default: no")
     
     args = parser.parse_args()
     if args.verbose:
