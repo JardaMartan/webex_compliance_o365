@@ -72,7 +72,7 @@ services:
     networks:
       - wx_o365_net
     volumes:
-      - ./config/config.json:/config/config.json:Z # ":Z" avoids permission error in SELinux, see: https://blog.cyplo.dev/posts/2016/12/using-ad-hoc-docker-volumes-on-selinux-enabled-systems/
+      - ./config:/config:z # ":z" avoids permission error in SELinux, see: https://blog.cyplo.dev/posts/2016/12/using-ad-hoc-docker-volumes-on-selinux-enabled-systems/
     image: jardamartan/webex_compliance_o365
 
   dynamodb_o365:
