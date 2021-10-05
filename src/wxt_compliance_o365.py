@@ -650,7 +650,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
         config = load_config()
         actor_list = config.get("actors")
         flask_app.logger.debug("configured actors: {}".format(actor_list))
-        if not any(actor.emails[0].lower() in actor.lower() for actor in actor_list):
+        if not any(actor.emails[0].lower() in act_member.lower() for act_member in actor_list):
             flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
             return
         
