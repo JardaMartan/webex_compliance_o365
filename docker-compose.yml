@@ -26,7 +26,8 @@ services:
 #   -w, --webex_user_sync Sync Webex Team members to M365 Group of the same name, default: no
 #   -a, --check_actor     Perform actions only if the Webex Event actor is in the "actors" list from the /config/config.json file,
 #                         default: no
-    command: python wxt_compliance_o365.py -vv -fnca #-fnmwca
+#   -s, --skip_timestamp  Ignore stored timestamp and monitor the events just from the application start, default: no
+    command: python wxt_compliance_o365.py -vv -fnca #-fnmwcas
     container_name: webex-compliance-o365
     depends_on:
       - dynamodb_o365

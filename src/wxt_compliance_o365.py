@@ -155,7 +155,8 @@ options = {
     "m365_user_sync": False,
     "webex_user_sync": False,
     "check_aad_user": False,
-    "check_actor": False
+    "check_actor": False,
+    "skip_timestamp": False
 }
 
 class AccessTokenAbs(AccessToken):
@@ -515,8 +516,11 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
         
         xargs = {}
         
-        # load last timestamp from DB
-        last_timestamp = load_timestamp(TIMESTAMP_KEY)
+        if options["skip_timestamp"]:
+            last_timestamp = None
+        else:
+            # load last timestamp from DB
+            last_timestamp = load_timestamp(TIMESTAMP_KEY)
         
         if last_timestamp is None:
             from_time = datetime.utcnow()
@@ -915,6 +919,7 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--check_aad_user", action='store_true', help="Check if a newly added user to a Webex Team has an account in Azure AD, default: no")
     parser.add_argument("-w", "--webex_user_sync", action='store_true', help="Sync Webex Team members to M365 Group of the same name, default: no")
     parser.add_argument("-a", "--check_actor", action='store_true', help="Perform actions only if the Webex Event actor is in the \"actors\" list from the /config/config.json file, default: no")
+    parser.add_argument("-s", "--skip_timestamp", action='store_true', help="Ignore stored timestamp and monitor the events just from the application start, default: no")
     
     args = parser.parse_args()
     if args.verbose:
@@ -937,6 +942,7 @@ if __name__ == "__main__":
     options["webex_user_sync"] = args.webex_user_sync
     options["check_aad_user"] = args.check_aad_user
     options["check_actor"] = args.check_actor
+    options["skip_timestamp"] = args.skip_timestamp
         
     flask_app.logger.info("OPTIONS: {}".format(options))
     
