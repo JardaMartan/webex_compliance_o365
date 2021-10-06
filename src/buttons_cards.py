@@ -79,9 +79,32 @@ SP_LINK_FORM = {
             ]
         },
         {
-            "type": "TextBlock",
-            "text": "MS Office dokumenty podléhají klasifikaci a musí být proto uloženy na SharePointu. Tlačítko Návod vás přesměruje na dokument, který popisuje, jak SharePoint k Prostoru připojit.",
-            "wrap": True
+            "type": "RichTextBlock",
+            "inlines": [
+                {
+                    "type": "TextRun",
+                    "text": "Schválení bezpečnostní politika této aplikace vyžaduje, aby "
+                },
+                {
+                    "type": "TextRun",
+                    "text": "soubory kromě obrázků byly ukládány pouze do propojené složky Microsoft365 SharePoint Online. ",
+                    "weight": "bolder"
+                },
+                {
+                    "type": "TextRun",
+                    "text": "Tlačítko \"Návod\" vás přesměruje na dokument, který popisuje, jak SharePoint Online k Prostoru připojit."
+                }
+            ]
+        },
+        {
+            "type": "RichTextBlock",
+            "inlines": [
+                {
+                    "type": "TextRun",
+                    "text": "Vámi vložené soubory byly vymazány.",
+                    "weight": "bolder"
+                }
+            ]
         },
         {
             "type": "ActionSet",
@@ -132,9 +155,22 @@ SP_WARNING_FORM = {
             ]
         },
         {
-            "type": "TextBlock",
-            "text": "MS Office dokumenty podléhají klasifikaci a musí být proto uloženy na SharePointu. Tlačítko Návod vás přesměruje na dokument, který popisuje, jak SharePoint k Prostoru připojit.",
-            "wrap": True
+            "type": "RichTextBlock",
+            "inlines": [
+                {
+                    "type": "TextRun",
+                    "text": "Schválení bezpečnostní politika této aplikace vyžaduje, aby "
+                },
+                {
+                    "type": "TextRun",
+                    "text": "soubory kromě obrázků byly ukládány pouze do propojené složky Microsoft365 SharePoint Online. ",
+                    "weight": "bolder"
+                },
+                {
+                    "type": "TextRun",
+                    "text": "Tlačítko \"Návod\" vás přesměruje na dokument, který popisuje, jak SharePoint Online k Prostoru připojit."
+                }
+            ]
         },
         {
             "type": "ActionSet",
