@@ -83,7 +83,7 @@ SP_LINK_FORM = {
             "inlines": [
                 {
                     "type": "TextRun",
-                    "text": "Schválení bezpečnostní politika této aplikace vyžaduje, aby "
+                    "text": "Schválená bezpečnostní politika této aplikace vyžaduje, aby "
                 },
                 {
                     "type": "TextRun",
@@ -159,7 +159,7 @@ SP_WARNING_FORM = {
             "inlines": [
                 {
                     "type": "TextRun",
-                    "text": "Schválení bezpečnostní politika této aplikace vyžaduje, aby "
+                    "text": "Schválená bezpečnostní politika této aplikace vyžaduje, aby "
                 },
                 {
                     "type": "TextRun",
