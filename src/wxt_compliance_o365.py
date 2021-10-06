@@ -154,7 +154,8 @@ options = {
     "notify": False,
     "m365_user_sync": False,
     "webex_user_sync": False,
-    "check_aad_user": False
+    "check_aad_user": False,
+    "check_actor": False
 }
 
 class AccessTokenAbs(AccessToken):
@@ -648,11 +649,13 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
         
         actor = wxt_client.people.get(event.actorId)
         config = load_config()
-        actor_list = config.get("actors")
-        flask_app.logger.debug("configured actors: {}".format(actor_list))
-        if not any(actor.emails[0].lower() in act_member.lower() for act_member in actor_list):
-            flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
-            return
+        
+        if options["check_actor"]:
+            actor_list = config.get("actors")
+            flask_app.logger.debug("configured actors: {}".format(actor_list))
+            if not any(actor.emails[0].lower() in act_member.lower() for act_member in actor_list):
+                flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
+                return
         
         room_info = wxt_client.rooms.get(event.data.roomId)
         flask_app.logger.info("Room info: {}".format(room_info))
@@ -911,6 +914,7 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--m365_user_sync", action='store_true', help="Sync M365 Group members to Webex Team of the same name, default: no")
     parser.add_argument("-c", "--check_aad_user", action='store_true', help="Check if a newly added user to a Webex Team has an account in Azure AD, default: no")
     parser.add_argument("-w", "--webex_user_sync", action='store_true', help="Sync Webex Team members to M365 Group of the same name, default: no")
+    parser.add_argument("-a", "--check_actor", action='store_true', help="Perform actions only if the Webex Event actor is in the \"actors\" list from the /config/config.json file, default: no")
     
     args = parser.parse_args()
     if args.verbose:
@@ -932,6 +936,7 @@ if __name__ == "__main__":
     options["m365_user_sync"] = args.m365_user_sync
     options["webex_user_sync"] = args.webex_user_sync
     options["check_aad_user"] = args.check_aad_user
+    options["check_actor"] = args.check_actor
         
     flask_app.logger.info("OPTIONS: {}".format(options))
     

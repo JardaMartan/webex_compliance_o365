@@ -24,12 +24,14 @@ services:
 #   -m, --m365_user_sync  Sync M365 Group members to Webex Team of the same name, default: no
 #   -c, --check_aad_user  Check if a newly added user to a Webex Team has an account in Azure AD, default: no
 #   -w, --webex_user_sync Sync Webex Team members to M365 Group of the same name, default: no
-    command: python wxt_compliance_o365.py -vv -fnc #-fnmwc
+#   -a, --check_actor     Perform actions only if the Webex Event actor is in the "actors" list from the /config/config.json file,
+#                         default: no
+    command: python wxt_compliance_o365.py -vv -fnca #-fnmwca
     container_name: webex-compliance-o365
     depends_on:
       - dynamodb_o365
     ports:
-      - "5052:5050"
+      - "443:5050"
     environment:
       PYTHONUNBUFFERED: 'true'
       # avoid potential certificate issues when running via proxy, see:
