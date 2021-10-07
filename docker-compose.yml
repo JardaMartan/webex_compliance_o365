@@ -46,6 +46,7 @@ services:
       URL_ONEDRIVE_LINK: "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
       # link to a company's IDM
       URL_IDM: "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
+      URL_IDM_GUIDE: "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
       
       WEBEX_INTEGRATION_ID: "your_webex_integration_id"
       WEBEX_INTEGRATION_CLIENT_ID: "your_webex_integration_client_id"
