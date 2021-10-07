@@ -861,7 +861,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                         display_name = event.data.personDisplayName
                     else:
                         display_name = ""
-                    form = bc.nested_replace_dict(bc.USER_WARNING_FORM, {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": os.getenv("URL_IDM", "url_idm_guide": os.getenv("URL_IDM_GUIDE")})
+                    form = bc.nested_replace_dict(bc.USER_WARNING_FORM, {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": os.getenv("URL_IDM"), "url_idm_guide": os.getenv("URL_IDM_GUIDE")})
                     # xargs = {
                     #     "attachments": [bc.wrap_form(form)]
                     # }
