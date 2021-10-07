@@ -211,7 +211,7 @@ USER_WARNING_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Uživatel {{display_name}} ({{email}}) nemá v IDM České pošty evidovanou identitu nebo chybí účet v ActiveDirectory.",
+                            "text": "Pozor na zásady Bezpečnostní politiky! Uživatel {{display_name}} ({{email}}) byl odebrán z Týmu, protože nemá v IDM České pošty evidovanou identitu nebo chybí jeho účet v ActiveDirectory.",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
