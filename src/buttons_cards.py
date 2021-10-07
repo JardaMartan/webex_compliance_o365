@@ -211,7 +211,7 @@ USER_WARNING_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Uživatel {{display_name}} ({{email}}) nemá v našem Office365 účet.",
+                            "text": "Uživatel {{display_name}} ({{email}}) nemá v IDM České pošty evidovanou identitu nebo chybí účet v ActiveDirectory.",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -222,12 +222,17 @@ USER_WARNING_FORM = {
         },
         {
             "type": "TextBlock",
-            "text": "Jestliže se jedná o hosta, nechte mu vytvořit účet v IDM.", # a pak ho přidejte do Office365 skupiny \"{{group_name}}\"",
+            "text": "Zajistěte registraci účtu dle standardního procesu a pak teprve přidejte uživatele do Týmu. Tlačítko \"Návod\" vás přesměruje na dokument, který popisuje, jak zajistit registraci identity nebo přidělit roli pro přístup do ActiveDirectory.",
             "wrap": True
         },
         {
             "type": "ActionSet",
             "actions": [
+                {
+                    "type": "Action.OpenUrl",
+                    "title": "Návod",
+                    "url": "{{url_idm_guide}}"
+                },
                 {
                     "type": "Action.OpenUrl",
                     "title": "Přejít do IDM",
