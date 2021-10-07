@@ -41,8 +41,10 @@ requests.packages.urllib3.disable_warnings()
 
 logger = logging.getLogger()
 
+# DynamoDB singleton. Needs to be initialized at the start of the application.
 ddb = None
 
+# Webex integration scopes
 ADMIN_SCOPE = ["audit:events_read"]
 
 TEAMS_COMPLIANCE_SCOPE = ["spark-compliance:events_read",
@@ -68,8 +70,10 @@ TEAMS_COMPLIANCE_READ_SCOPE = ["spark-compliance:events_read",
 
 MEETINGS_COMPLIANCE_SCOPE = ["spark-compliance:meetings_write"]
 
+# automatically added to any integration
 DEFAULT_SCOPE = ["spark:kms"]
 
+# MS Office MIME types
 SUSPECT_MIME_TYPES = ["application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
@@ -101,10 +105,11 @@ ALLOWED_MIME_TYPES_REGEX = [
 STATE_CHECK = "webex is great" # integrity test phrase
 
 # timers
-EVENT_CHECK_INTERVAL = 15
-M365_GROUP_CHECK_INTERVAL = 15
+EVENT_CHECK_INTERVAL = 15 # delay in main loop
+M365_GROUP_CHECK_INTERVAL = 15 # delay of M365 Group users sync to Webex Team
 SAFE_TOKEN_DELTA = 3600 # safety seconds before access token expires - renew if smaller
 
+# Graph API scopes
 GRAPH_SCOPE = ["offline_access",
     "User.Read.All",
     "Group.Read.All",
@@ -149,6 +154,7 @@ wxt_bot_id = None
 token_refreshed = False
 o365_account_changed = False
 
+# default options for the application run
 options = {
     "file_events": False,
     "notify": False,
@@ -160,6 +166,18 @@ options = {
 }
 
 class AccessTokenAbs(AccessToken):
+    """
+    Store Access Token with a real timestamp.
+    
+    Access Tokens are generated with 'expires-in' information. In order to store them
+    it's better to have a real expiration date and time. Timestamps are saved in UTC.
+    Note that Refresh Token expiration is not important. As long as it's being used
+    to generate new Access Tokens, its validity is extended even beyond the original expiration date.
+    
+    Attributes:
+        expires_at (float): When the access token expires
+        refresh_token_expires_at (float): When the refresh token expires.
+    """
     def __init__(self, access_token_json):
         super().__init__(access_token_json)
         if not "expires_at" in self._json_data.keys():
@@ -178,6 +196,12 @@ class AccessTokenAbs(AccessToken):
         return self._json_data["refresh_token_expires_at"]
 
 def save_tokens(token_key, tokens):
+    """
+    Save tokens.
+    
+    Parameters:
+        tokens (AccessTokenAbs): Access & Refresh Token object
+    """
     global token_refreshed
     
     flask_app.logger.debug("AT timestamp: {}".format(tokens.expires_at))
@@ -189,9 +213,18 @@ def save_tokens(token_key, tokens):
     }
     ddb.save_db_record(token_key, "TOKENS", str(tokens.expires_at), **token_record)
     
-    token_refreshed = True
+    token_refreshed = True # indicate to the main loop that the Webex token has been refreshed
     
 def get_tokens_for_key(token_key):
+    """
+    Load tokens.
+    
+    Parameters:
+        token_key (str): A key to the storage of the token
+        
+    Returns:
+        AccessTokenAbs: Access & Refresh Token object or None
+    """
     db_tokens = ddb.get_db_record(token_key, "TOKENS")
     flask_app.logger.debug("Loaded tokens from db: {}".format(db_tokens))
     
@@ -205,6 +238,19 @@ def get_tokens_for_key(token_key):
         return None
 
 def refresh_tokens_for_key(token_key):
+    """
+    Run the Webex 'get new token by using refresh token' operation.
+    
+    Get new Access Token. Note that the expiration of the Refresh Token is automatically
+    extended no matter if it's indicated. So if this operation is run regularly within
+    the time limits of the Refresh Token (typically 3 months), the Refresh Token never expires.
+    
+    Parameters:
+        token_key (str): A key to the storage of the token
+        
+    Returns:
+        str: message indicating the result of the operation
+    """
     tokens = get_tokens_for_key(token_key)
     client_id = os.getenv("WEBEX_INTEGRATION_CLIENT_ID")
     client_secret = os.getenv("WEBEX_INTEGRATION_CLIENT_SECRET")
@@ -221,6 +267,19 @@ def refresh_tokens_for_key(token_key):
     
 # O365
 def get_o365_account(user_id, org_id, resource = None):
+    """
+    Initialize O365 Account object.
+    
+    The object is then used for calling Graph API. Both parameters are used as keys
+    for Access and Refresh tokens storage.
+    
+    Parameters:
+        user_id (str): User id (e-mail)
+        org_id (str): O365 organization id.
+        
+    Returns:
+        O365.Account: Account object
+    """
     o365_client_id = os.getenv("O365_CLIENT_ID")
     o365_client_secret = os.getenv("O365_CLIENT_SECRET")
     o365_credentials = (o365_client_id, o365_client_secret)
@@ -238,6 +297,14 @@ def get_o365_account(user_id, org_id, resource = None):
     return account
     
 def get_o365_account_noauth():
+    """
+    Pre-initialize O365 Account object.
+    
+    Prepare the Account object for subsequent OAuth authorization.
+    
+    Returns:
+        O365.Account: Account object    
+    """
     o365_client_id = os.getenv("O365_CLIENT_ID")
     o365_client_secret = os.getenv("O365_CLIENT_SECRET")
     o365_credentials = (o365_client_id, o365_client_secret)
@@ -251,6 +318,12 @@ def get_o365_account_noauth():
     return account
     
 def o365_check_token():
+    """
+    Check the validity of the O365 access token
+    
+    Run an OAuth refresh token operation and save the token. Verify if the token
+    works by running a dummy Graph API request.
+    """
     global o365_account_changed
     
     account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
@@ -263,7 +336,7 @@ def o365_check_token():
             flask_app.logger.debug("Refresh O365 authorization, long lived: {}".format(token.is_long_lived))
             con.refresh_token()
             flask_app.logger.debug("Refresh O365 authorization done")
-            o365_account_changed = True
+            o365_account_changed = True # indicate to the main loop that the O365 token has been refreshed
 
     # query_condition = "$filter=userType eq 'Guest' and mail eq '{}'".format(event.data.personEmail)
     query_condition = "userType eq 'Guest' and mail eq 'nonexistent@perlovka.guru'"
@@ -274,9 +347,25 @@ def o365_check_token():
         flask_app.logger.info("AAD dummy query result: {}".format([user.mail, user.user_principal_name, user.display_name]))
     
 def save_timestamp(timestamp_key, timestamp):
+    """
+    Save a timestamp.
+    
+    Parameters:
+        timestamp_key (str): storage key for the timestamp
+        timestamp (float): datetime timestamp
+    """
     ddb.save_db_record(timestamp_key, "TIMESTAMP", timestamp)
     
 def load_timestamp(timestamp_key):
+    """
+    Save a timestamp.
+    
+    Parameters:
+        timestamp_key (str): storage key for the timestamp
+        
+    Returns:
+        float: timestamp for datetime
+    """
     db_timestamp = ddb.get_db_record(timestamp_key, "TIMESTAMP")
     flask_app.logger.debug("Loaded timestamp from db: {}".format(db_timestamp))
     
@@ -295,6 +384,11 @@ def load_timestamp(timestamp_key):
 """
 @flask_app.before_first_request
 def startup():
+    """
+    Initialize the application.
+    
+    Create DynamoDB storage singleton. Start the main loop thread.
+    """
     global ddb
     
     ddb = DDB_Single_Table()
@@ -307,6 +401,14 @@ def startup():
 
 @flask_app.route("/")
 def hello():
+    """
+    A dummy URL.
+    
+    Used for a dummy request which initializes the application. See start_runner() below.
+    
+    Returns:
+        str: something highly informative
+    """
     return "Hello World!"
 
 """
@@ -314,14 +416,22 @@ OAuth proccess done
 """
 @flask_app.route("/authdone", methods=["GET"])
 def authdone():
+    """
+    Landing page for the OAuth authorization process.
+    
+    Used to hide the OAuth response URL parameters.
+    """
     ## TODO: post the information & help, maybe an event creation form to the 1-1 space with the user
     return "Thank you for providing the authorization. You may close this browser window."
 
-"""
-OAuth grant flow start
-"""
 @flask_app.route("/authorize", methods=["GET"])
 def authorize():
+    """
+    Start the Webex OAuth grant flow.
+    
+    See: https://developer.webex.com/docs/integrations
+    Note that scopes and redirect URI of your integration have to match this application.
+    """
     myUrlParts = urlparse(request.url)
     full_redirect_uri = os.getenv("REDIRECT_URI")
     if full_redirect_uri is None:
@@ -336,16 +446,18 @@ def authorize():
 
     return redirect(join_url)
     
-"""
-OAuth grant flow redirect url
-generate access and refresh tokens using "code" generated in OAuth grant flow
-after user successfully authenticated to Webex
-
-See: https://developer.webex.com/blog/real-world-walkthrough-of-building-an-oauth-webex-integration
-https://developer.webex.com/docs/integrations
-"""   
 @flask_app.route("/manager", methods=["GET"])
 def manager():
+    """
+    Webex OAuth grant flow redirect URL
+    
+    Generate access and refresh tokens using 'code' generated in OAuth grant flow
+    after user successfully authenticated to Webex
+
+    See: https://developer.webex.com/blog/real-world-walkthrough-of-building-an-oauth-webex-integration
+    https://developer.webex.com/docs/integrations
+    """   
+
     global wxt_username
     
     if request.args.get("error"):
@@ -382,13 +494,17 @@ def manager():
         flask_app.logger.error("Error getting user information: {}".format(e))
         return "Error getting your user information: {}".format(e)
         
+    # hide the original redirect URL and its parameters from the user's browser
     return redirect(url_for("authdone"))
     
-"""
-O365 OAuth grant flow
-"""
 @flask_app.route('/o365auth')
 def o365_auth():
+    """
+    O365 OAuth grant flow
+    
+    Note that scopes and redirect URI of your Enterprise Application have to match this application.
+    """
+
     my_state = request.args.get("state", "local")
     flask_app.logger.debug("input state: {}".format(my_state))
     
@@ -405,7 +521,10 @@ def o365_auth():
 
     url, o365_state = account.con.get_authorization_url(requested_scopes=scopes, redirect_uri=callback)
     
-    # replace "state" parameter injected by O365 object
+    # the state must be saved somewhere as it will be needed later
+    # my_db.store_state(state) # example...
+
+    # do not bother saving the state, replace "state" parameter injected by O365 object
     o365_auth_parts = urlparse(url)
     o365_query = dict(parse_qsl(o365_auth_parts.query))
     o365_query["state"] = my_state
@@ -414,21 +533,18 @@ def o365_auth():
     
     flask_app.logger.debug("O365 auth URL: {}".format(new_o365_url))
 
-    # the state must be saved somewhere as it will be needed later
-    # my_db.store_state(state) # example...
-
     return redirect(new_o365_url)
 
 @flask_app.route('/o365doauth')
 def o365_do_auth():
+    """
+    Webex OAuth grant flow redirect URL
+    """
     global o365_account_changed
     
     # token_backend = FileSystemTokenBackend(token_path='.', token_filename='o365_token.txt')
     my_state = request.args.get("state", O365_LOCAL_USER_KEY)
     flask_app.logger.debug("O365 state: {}".format(my_state))
-    
-    # person_data = webex_api.people.get(my_state)
-    # flask_app.logger.debug("O365 login requestor data: {}".format(person_data))
     
     account = get_o365_account(my_state, O365_ACCOUNT_KEY) # person_data.orgId
     
@@ -443,6 +559,7 @@ def o365_do_auth():
 
     # callback = quote(full_redirect_uri, safe="")
     callback = full_redirect_uri
+    # AzureAD allows only https redirect URIs
     req_url = re.sub(r"^http:", "https:", request.url)
     
     flask_app.logger.debug("URL: {}".format(req_url))
@@ -463,6 +580,11 @@ def o365_do_auth():
     
 @flask_app.route("/o365wh", methods=["GET", "POST"])
 def o365_webhook():
+    """
+    Graph API webhook example
+    
+    See: https://docs.microsoft.com/en-us/graph/api/resources/subscription
+    """
     webhook = request.get_json(silent=True)
     flask_app.logger.debug("O365 webhook received: {}".format(webhook))
     
@@ -495,27 +617,30 @@ def o365_webhook():
     
     return "OK"
 
-"""
-Check events API thread. Infinite loop which periodically checks the Events API.
-Doesn't work until "wxt_username" runs through OAuth grant flow above.
-Access token is automatically refreshed if needed using Refresh Token.
-No additional user authentication is required.
-"""
 def check_events(check_interval=EVENT_CHECK_INTERVAL):
+    """
+    Check events API thread.
+    
+    Infinite loop which periodically checks the Events API.
+    Doesn't work until "wxt_username" runs through OAuth grant flow above.
+    Access token is automatically refreshed if needed using Refresh Token.
+    No additional user authentication is required.
+    """
     global wxt_username, wxt_user_id, wxt_bot_id, token_refreshed, o365_account_changed, options
 
-# TODO:
-# 1. transition to a Bot account as a Team member
-# 2. threading
-# 3. check how many reponses are returned (max = 100)
-# 4. add env variable for testers
+    # TODO:
+    # 1. threading
+    # 2. check how many reponses are returned (max = 100)
 
+    # As it runs as a thread, exceptions do not show on console.
+    # Capture any exception and keep the thread running
     try:
         tokens = None
         wxt_client = None
         
         xargs = {}
         
+        # check events from the last saved timestamp or from the application start
         if options["skip_timestamp"]:
             last_timestamp = None
         else:
@@ -535,6 +660,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
         flask_app.logger.error("check_events() start exception: {}".format(e))
     
     try:
+        # the Bot sends messages to users and runs some Team operations
         wxt_bot = WebexTeamsAPI(access_token = os.getenv("BOT_ACCESS_TOKEN"))
         wxt_bot_info = wxt_bot.people.me()
         wxt_bot_id = wxt_bot_info.id
@@ -598,6 +724,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                 o365_check_token()
                 o365_token_last_check = datetime.utcnow()
                 
+            # synchronize M365 Group members to Webex Teams with the same name
             if (options["m365_user_sync"] or options["webex_user_sync"]) and (datetime.utcnow() - m365_group_last_check).total_seconds() > M365_GROUP_CHECK_INTERVAL:
                 # TODO:
                 # 1. load all Wx Teams
@@ -648,12 +775,17 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
             time.sleep(check_interval)
             
 def handle_event(event, wxt_client, wxt_bot, o365_account, options):
+    """
+    Handle Webex Events API query result
+    """
     try:
         flask_app.logger.info("Event: {}".format(event))
         
         actor = wxt_client.people.get(event.actorId)
         config = load_config()
         
+        # if we run in a test mode (--check_actor option), the actions take place
+        # only for configured users
         if options["check_actor"]:
             actor_list = config.get("actors")
             flask_app.logger.debug("configured actors: {}".format(actor_list))
@@ -664,9 +796,13 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
         room_info = wxt_client.rooms.get(event.data.roomId)
         flask_app.logger.info("Room info: {}".format(room_info))
         
+        # Space membership change
+        # there is an additional set of actions if a new Team is created
         if event.resource == "memberships" and event.type in ["created","deleted"] and room_info.type == "group" and not event.actorId == wxt_user_id:
             if event.type == "created" and room_info.creatorId == event.data.personId:                             
                 flask_app.logger.info("send notification")
+
+                # new team created. Add Bot as a Team moderator
                 if room_info.teamId:
                     flask_app.logger.info("Room is part of a team")
                     if event.type == "created":
@@ -715,7 +851,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                         "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
                         xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)
                         
-            # check if a newly added user has an account in aad
+            # check if a newly added user has an account in AzureAD
             if event.type == "created" and room_info.teamId and options["check_aad_user"]:
                 team_info = wxt_bot.teams.get(room_info.teamId)
                 user_account = get_o365_user_account(o365_account, event.data.personEmail)
@@ -734,7 +870,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                     flask_app.logger.info("Deleting team membership for user {}".format(event.data.personEmail))
                     wxt_bot.memberships.delete(event.data.id)
                     
-            # TODO: check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
+            # check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
             if room_info.teamId and options["webex_user_sync"]:
                 flask_app.logger.info("Check O365 Group relationship")
                 if not team_info:
@@ -754,6 +890,8 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                 else:
                     flask_app.logger.info("No corresponding O365 Group for Team \"{}\"".format(team_info.name))
                         
+        # new message
+        # check the attached files, delete the message if any file type violates the sharing policy
         if event.resource == "messages" and event.type == "created" and not event.actorId == wxt_user_id:
             # message_info = wxt_client.messages.get(event.data.id)
             # flask_app.logger.info("Message info: {}".format(message_info))
@@ -789,6 +927,20 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
         flask_app.logger.error("handle_event() exception: {}".format(e))
             
 def send_compliance_message(wxt_client, wxt_user_id, room_id, message, xargs, act_on_behalf_client = None, act_on_behalf_client_id = None):
+    """
+    Send a compliance message + card
+    
+    The function makes sure the wxt_user_id is a member of the Space to which the message is sent.
+    
+    Parameters:
+        wxt_client (WebexTeamsAPI): API client which sends the message
+        wxt_user_id (str): ID of the API client user
+        room_id (str): ID of the room to which the message is sent
+        message (str): text of the message
+        xargs (dict): additional parameters for wxt_client.messages.create() call
+        act_on_behalf_client (WebexTeamsAPI): API client with Compliance permissions which can be needed to add wxt_user_id to the Space
+        act_on_behalf_client_id (str): act_on_behalf_client's Compliance API user ID
+    """
     membership_found = False
     try:
         existing_membership_generator = wxt_client.memberships.list(roomId = room_id, personId = wxt_user_id)
@@ -818,6 +970,16 @@ def send_compliance_message(wxt_client, wxt_user_id, room_id, message, xargs, ac
         wxt_client.memberships.delete(my_membership.id)
     
 def find_o365_group(o365_account, group_name = None):
+    """
+    Find M365 Group by name
+    
+    Parameters:
+        o365_account (O365.Account): account used to query the Graph API
+        group_name (str): a group name to search for
+        
+    Returns:
+        dict: JSON structure returned by the query
+    """
     filter = {"$select": "id, displayName"}
     if group_name:
         filter["$filter"] = "displayName eq '{}'".format(group_name)
@@ -837,6 +999,18 @@ def find_o365_group(o365_account, group_name = None):
         return None
         
 def get_o365_user_account(o365_account, email):
+    """
+    Find a Guest user account from AzureAD
+    
+    Search AzureAD for a Guest account with a corresponding e-mail address
+    
+    Parameters:
+        o365_account (O365.Account): account used to query the Graph API
+        email (str): user's e-mail address
+        
+    Returns:
+        user object
+    """
     EXT_USER_INCLUDE = "#EXT#@"
     
     query_condition = "mail eq '{}'".format(email)
@@ -848,18 +1022,48 @@ def get_o365_user_account(o365_account, email):
         return result
 
 def add_o365_group_member(o365_account, group_id, user_id):
+    """
+    Add a user to M365 Group
+    
+    Parameters:
+        o365_account (O365.Account): account used to query the Graph API
+        user_id (str): user's ID (ObjectID) from AzureAD
+        
+    Returns:
+        bool: Operations result
+    """
     grp = Group(o365_account)
     result = grp.add_member(group_id, user_id)
     
     return result.ok
 
 def delete_o365_group_member(o365_account, group_id, user_id):
+    """
+    Remove a user from M365 Group
+    
+    Parameters:
+        o365_account (O365.Account): account used to query the Graph API
+        user_id (str): user's ID (ObjectID) from AzureAD
+        
+    Returns:
+        bool: Operations result
+    """
     grp = Group(o365_account)
     result = grp.delete_member(group_id, user_id)
     
     return result.ok
     
 def get_o365_group_members(o365_account, group_id):
+    """
+    Get M365 Group members
+    
+    Parameters:
+        o365_account (O365.Account): account used to query the Graph API
+        group_id (str): group ID from AzureAD
+        
+    Returns:
+        dict: list of group members
+    """
     filter = {"$select": "id, displayName, mail"}
     grp = Group(o365_account)
     result = grp.members(group_id, params = filter)
@@ -869,15 +1073,21 @@ def get_o365_group_members(o365_account, group_id):
         return res_json["value"]
         
 def load_config():
+    """
+    Load the configuration file.
+    
+    Returns:
+        dict: configuration file JSON
+    """
     with open("/config/config.json") as file:
         config = json.load(file)
     return config
         
-"""
-Independent thread startup, see:
-https://networklore.com/start-task-with-flask/
-"""
 def start_runner():
+    """
+    Independent thread startup, see:
+    https://networklore.com/start-task-with-flask/
+    """
     def start_loop():
         no_proxies = {
           "http": None,
@@ -903,14 +1113,6 @@ def start_runner():
 if __name__ == "__main__":
     import argparse
     
-    # default_user = os.getenv("COMPLIANCE_USER")
-    # if default_user is None:
-    #     default_user = os.getenv("COMPLIANCE_USER_DEFAULT")
-    #     if default_user is None:
-    #         default_user = "COMPLIANCE"
-    # 
-    # flask_app.logger.info("Compliance user from env variables: {}".format(default_user))
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--verbose', action='count', help="Set logging level by number of -v's, -v=WARN, -vv=INFO, -vvv=DEBUG")
     parser.add_argument("-f", "--file_events", action='store_true', help="Monitor file events, default: no")
