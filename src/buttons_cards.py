@@ -1,3 +1,5 @@
+import localization_strings as ls
+
 def wrap_form(form):
     card = EMPTY_CARD
     card["content"] = form
@@ -37,7 +39,22 @@ def nested_replace_dict(structure, replace_dict):
         structure = nested_replace(structure, key, value)
         
     return structure
+
+# form = bc.nested_replace_dict(bc.localize(bc.USER_WARNING_FORM, options["language"]), {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": os.getenv("URL_IDM"), "url_idm_guide": os.getenv("URL_IDM_GUIDE")})
+def localize(structure, language):
+    """localize structure using {{original}} wrapped strings with new value
+    use recursion to walk the whole sructure
+    
+    arguments:
+    structure -- input dict / list / string
+    language -- language code which is used to match key in ls.LOCALES dict
+    """
+    if not language in ls.LOCALES.keys():
+        return structure
         
+    lang_dict = ls.LOCALES[language]
+    return nested_replace_dict(structure, lang_dict)
+
 # wrapper structure for Webex attachments list        
 EMPTY_CARD = {
     "contentType": "application/vnd.microsoft.card.adaptive",
@@ -69,7 +86,7 @@ SP_LINK_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Pro sdílení dokumentů připojte k tomuto Prostoru SharePoint Online úložiště.",
+                            "text": "{{spl_1}}",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -83,16 +100,16 @@ SP_LINK_FORM = {
             "inlines": [
                 {
                     "type": "TextRun",
-                    "text": "Schválená bezpečnostní politika této aplikace vyžaduje, aby "
+                    "text": "{{spl_2}}"
                 },
                 {
                     "type": "TextRun",
-                    "text": "soubory kromě obrázků byly ukládány pouze do propojené složky Microsoft365 SharePoint Online. ",
+                    "text": "{{spl_3}}",
                     "weight": "bolder"
                 },
                 {
                     "type": "TextRun",
-                    "text": "Tlačítko \"Návod\" vás přesměruje na dokument, který popisuje, jak SharePoint Online k Prostoru připojit."
+                    "text": "{{spl_4}}"
                 }
             ]
         },
@@ -101,7 +118,7 @@ SP_LINK_FORM = {
             "inlines": [
                 {
                     "type": "TextRun",
-                    "text": "Vámi vložené soubory byly vymazány.",
+                    "text": "{{spl_5}}",
                     "weight": "bolder"
                 }
             ]
@@ -111,7 +128,7 @@ SP_LINK_FORM = {
             "actions": [
                 {
                     "type": "Action.OpenUrl",
-                    "title": "Návod",
+                    "title": "{{button_guide}}",
                     "url": "{{url_onedrive_link}}"
                 }
             ],
@@ -145,7 +162,7 @@ SP_WARNING_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Pro sdílení dokumentů zkontrolujte, že je k tomuto Prostoru připojeno SharePoint Online úložiště.",
+                            "text": "{{spw_1}}",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -159,16 +176,16 @@ SP_WARNING_FORM = {
             "inlines": [
                 {
                     "type": "TextRun",
-                    "text": "Schválená bezpečnostní politika této aplikace vyžaduje, aby "
+                    "text": "{{spl_2}}"
                 },
                 {
                     "type": "TextRun",
-                    "text": "soubory kromě obrázků byly ukládány pouze do propojené složky Microsoft365 SharePoint Online. ",
+                    "text": "{{spl_3}}",
                     "weight": "bolder"
                 },
                 {
                     "type": "TextRun",
-                    "text": "Tlačítko \"Návod\" vás přesměruje na dokument, který popisuje, jak SharePoint Online k Prostoru připojit."
+                    "text": "{{spl_4}}"
                 }
             ]
         },
@@ -177,7 +194,7 @@ SP_WARNING_FORM = {
             "actions": [
                 {
                     "type": "Action.OpenUrl",
-                    "title": "Návod",
+                    "title": "{{button_guide}}",
                     "url": "{{url_onedrive_link}}"
                 }
             ],
@@ -211,7 +228,7 @@ USER_WARNING_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Uživatel {{display_name}} ({{email}}) byl odebrán z Týmu, protože nemá v IDM České pošty evidovanou identitu nebo chybí jeho účet v ActiveDirectory.",
+                            "text": "{{usr_1}}",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -222,7 +239,7 @@ USER_WARNING_FORM = {
         },
         {
             "type": "TextBlock",
-            "text": "Zajistěte registraci identity dle standardního procesu a pak teprve přidejte uživatele do Týmu. Tlačítko \"Návod\" vás přesměruje na dokument, který popisuje, jak zajistit registraci identity nebo přidělit roli pro přístup do ActiveDirectory.",
+            "text": "{{usr_2}}",
             "wrap": True
         },
         {
@@ -230,12 +247,12 @@ USER_WARNING_FORM = {
             "actions": [
                 {
                     "type": "Action.OpenUrl",
-                    "title": "Návod",
+                    "title": "{{button_guide}}",
                     "url": "{{url_idm_guide}}"
                 },
                 {
                     "type": "Action.OpenUrl",
-                    "title": "Přejít do IDM",
+                    "title": "{{button_idm}}",
                     "url": "{{url_idm}}"
                 }
             ],
