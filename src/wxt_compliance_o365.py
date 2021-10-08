@@ -162,7 +162,8 @@ options = {
     "webex_user_sync": False,
     "check_aad_user": False,
     "check_actor": False,
-    "skip_timestamp": False
+    "skip_timestamp": False,
+    "language": "cs_CZ"
 }
 
 class AccessTokenAbs(AccessToken):
@@ -830,14 +831,14 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                                 flask_app.logger.debug("Send compliance message")
                                 wxt_bot.messages.create(roomId = room_info.id,
                                     markdown = "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                    attachments = [bc.wrap_form(bc.nested_replace_dict(bc.SP_WARNING_FORM, {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))])
+                                    attachments = [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))])
                         else:
                             # flask_app.logger.debug("Adding myself to the Team Space")
                             # my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id)
                             if options["notify"]:
                                 flask_app.logger.debug("Send compliance message")
                                 xargs = {
-                                    "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.SP_WARNING_FORM, {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
+                                    "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
                                 }
                                 send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
                                     "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
@@ -845,7 +846,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                                                         
                 else:
                     xargs = {
-                        "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.SP_WARNING_FORM, {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
+                        "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
                     }
                     send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
                         "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
@@ -861,11 +862,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                         display_name = event.data.personDisplayName
                     else:
                         display_name = ""
-                    form = bc.nested_replace_dict(bc.USER_WARNING_FORM, {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": os.getenv("URL_IDM"), "url_idm_guide": os.getenv("URL_IDM_GUIDE")})
-                    # xargs = {
-                    #     "attachments": [bc.wrap_form(form)]
-                    # }
-                    # send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId, "Uživatel nemá O365 účet.", xargs, add_delete_me = False)
+                    form = bc.nested_replace_dict(bc.localize(bc.USER_WARNING_FORM, options["language"]), {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": os.getenv("URL_IDM"), "url_idm_guide": os.getenv("URL_IDM_GUIDE")})
                     wxt_bot.messages.create(roomId = event.data.roomId, markdown = "Uživatel nemá O365 účet.", attachments = [bc.wrap_form(form)])
                     flask_app.logger.info("Deleting team membership for user {}".format(event.data.personEmail))
                     wxt_bot.memberships.delete(event.data.id)
@@ -918,7 +915,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
                     if not allowed_found:
                         wxt_client.messages.delete(event.data.id)
                         xargs = {
-                            "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.SP_LINK_FORM, {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
+                            "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_LINK_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
                         }
                         send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
                             "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
@@ -1122,6 +1119,7 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--webex_user_sync", action='store_true', help="Sync Webex Team members to M365 Group of the same name, default: no")
     parser.add_argument("-a", "--check_actor", action='store_true', help="Perform actions only if the Webex Event actor is in the \"actors\" list from the /config/config.json file, default: no")
     parser.add_argument("-s", "--skip_timestamp", action='store_true', help="Ignore stored timestamp and monitor the events just from the application start, default: no")
+    parser.add_argument("-l", "--language", default = "cs_CZ", help="Language (see localization_strings.LANGUAGE), default: cs_CZ")
     
     args = parser.parse_args()
     if args.verbose:
@@ -1145,6 +1143,7 @@ if __name__ == "__main__":
     options["check_aad_user"] = args.check_aad_user
     options["check_actor"] = args.check_actor
     options["skip_timestamp"] = args.skip_timestamp
+    options["language"] = args.language
         
     flask_app.logger.info("OPTIONS: {}".format(options))
     
