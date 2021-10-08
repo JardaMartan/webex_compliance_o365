@@ -69,7 +69,7 @@ SP_LINK_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Pro sdílení dokumentů připojte k tomuto Prostoru SharePoint úložiště.",
+                            "text": "Pro sdílení dokumentů připojte k tomuto Prostoru SharePoint Online úložiště.",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -145,7 +145,7 @@ SP_WARNING_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Pro sdílení dokumentů zkontrolujte, že je k tomuto Prostoru připojeno SharePoint úložiště.",
+                            "text": "Pro sdílení dokumentů zkontrolujte, že je k tomuto Prostoru připojeno SharePoint Online úložiště.",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -211,7 +211,7 @@ USER_WARNING_FORM = {
                     "items": [
                         {
                             "type": "TextBlock",
-                            "text": "Pozor na zásady Bezpečnostní politiky! Uživatel {{display_name}} ({{email}}) byl odebrán z Týmu, protože nemá v IDM České pošty evidovanou identitu nebo chybí jeho účet v ActiveDirectory.",
+                            "text": "Uživatel {{display_name}} ({{email}}) byl odebrán z Týmu, protože nemá v IDM České pošty evidovanou identitu nebo chybí jeho účet v ActiveDirectory.",
                             "wrap": True,
                             "weight": "Bolder",
                             "color": "Attention"
@@ -222,7 +222,7 @@ USER_WARNING_FORM = {
         },
         {
             "type": "TextBlock",
-            "text": "Zajistěte registraci účtu dle standardního procesu a pak teprve přidejte uživatele do Týmu. Tlačítko \"Návod\" vás přesměruje na dokument, který popisuje, jak zajistit registraci identity nebo přidělit roli pro přístup do ActiveDirectory.",
+            "text": "Zajistěte registraci identity dle standardního procesu a pak teprve přidejte uživatele do Týmu. Tlačítko \"Návod\" vás přesměruje na dokument, který popisuje, jak zajistit registraci identity nebo přidělit roli pro přístup do ActiveDirectory.",
             "wrap": True
         },
         {
