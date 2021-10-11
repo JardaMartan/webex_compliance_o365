@@ -12,6 +12,7 @@ from urllib.parse import urlparse, quote, parse_qsl, urlencode, urlunparse
 from webexteamssdk import WebexTeamsAPI, ApiError, AccessToken
 webex_api = WebexTeamsAPI(access_token="12345")
 
+"""
 # avoid using a proxy for DynamoDB communication
 import botocore.endpoint
 def _get_proxies(self, url):
@@ -19,6 +20,7 @@ def _get_proxies(self, url):
 botocore.endpoint.EndpointCreator._get_proxies = _get_proxies
 import boto3
 from ddb_single_table_obj import DDB_Single_Table
+"""
 
 from O365 import Account, FileSystemTokenBackend
 from o365_db_token_storage import DBTokenBackend
@@ -42,7 +44,7 @@ requests.packages.urllib3.disable_warnings()
 logger = logging.getLogger()
 
 # DynamoDB singleton. Needs to be initialized at the start of the application.
-ddb = None
+# ddb = None
 
 # Webex integration scopes
 ADMIN_SCOPE = ["audit:events_read"]
@@ -146,6 +148,10 @@ def sigterm_handler(_signo, _stack_frame):
 signal.signal(signal.SIGTERM, sigterm_handler)
 signal.signal(signal.SIGINT, sigterm_handler)
 
+STORAGE_PATH = "/token_storage/data/"
+WEBEX_TOKEN_FILE = "webex_tokens_{}.json"
+TIMESTAMP_FILE = "timestamp_{}.json"
+
 thread_executor = concurrent.futures.ThreadPoolExecutor()
 wxt_username = "COMPLIANCE"
 wxt_user_id = None
@@ -212,9 +218,16 @@ def save_tokens(token_key, tokens):
         "expires_at": tokens.expires_at,
         "refresh_token_expires_at": tokens.refresh_token_expires_at
     }
-    ddb.save_db_record(token_key, "TOKENS", str(tokens.expires_at), **token_record)
+    # ddb.save_db_record(token_key, "TOKENS", str(tokens.expires_at), **token_record)
+    file_destination = get_webex_token_file(token_key)
+    with open(file_destination, "w") as file:
+        flask_app.logger.debug("Saving Webex tokens to: {}".format(file_destination))
+        json.dump(token_record, file)
     
     token_refreshed = True # indicate to the main loop that the Webex token has been refreshed
+    
+def get_webex_token_file(token_key):
+    return STORAGE_PATH + WEBEX_TOKEN_FILE.format(token_key)
     
 def get_tokens_for_key(token_key):
     """
@@ -225,6 +238,18 @@ def get_tokens_for_key(token_key):
         
     Returns:
         AccessTokenAbs: Access & Refresh Token object or None
+    """
+    try:
+        file_source = get_webex_token_file(token_key)
+        with open(file_source, "r") as file:
+            flask_app.logger.debug("Loading Webex tokens from: {}".format(file_source))
+            token_data = json.load(file)
+            tokens = AccessTokenAbs(token_data)
+            return tokens
+    except Exception as e:
+        flask_app.logger.info("Webex token load exception: {}".format(e))
+        return None
+
     """
     db_tokens = ddb.get_db_record(token_key, "TOKENS")
     flask_app.logger.debug("Loaded tokens from db: {}".format(db_tokens))
@@ -237,6 +262,7 @@ def get_tokens_for_key(token_key):
     else:
         flask_app.logger.error("No tokens for key {}.".format(token_key))
         return None
+    """
 
 def refresh_tokens_for_key(token_key):
     """
@@ -287,7 +313,8 @@ def get_o365_account(user_id, org_id, resource = None):
     
     o365_tenant_id = os.getenv("O365_TENANT_ID")
 
-    token_backend = DBTokenBackend(user_id, "O365_GUEST_CHECK", org_id)
+    token_backend = FileSystemTokenBackend(token_path=STORAGE_PATH, token_filename='o365_token.txt')
+    # token_backend = DBTokenBackend(user_id, "O365_GUEST_CHECK", org_id)
     args = {}
     if resource:
         args["resource"] = resource
@@ -355,7 +382,12 @@ def save_timestamp(timestamp_key, timestamp):
         timestamp_key (str): storage key for the timestamp
         timestamp (float): datetime timestamp
     """
-    ddb.save_db_record(timestamp_key, "TIMESTAMP", timestamp)
+    timestamp_destination = get_timestamp_file(timestamp_key)
+    flask_app.logger.debug("Saving timestamp to {}".format(timestamp_destination))
+    with open(timestamp_destination, "w") as file:
+        json.dump({"timestamp": timestamp}, file)
+    
+    # ddb.save_db_record(timestamp_key, "TIMESTAMP", timestamp)
     
 def load_timestamp(timestamp_key):
     """
@@ -367,6 +399,17 @@ def load_timestamp(timestamp_key):
     Returns:
         float: timestamp for datetime
     """
+    timestamp_source = get_timestamp_file(timestamp_key)
+    flask_app.logger.debug("Loading timestamp from {}".format(timestamp_source))
+    try:
+        with open(timestamp_source, "r") as file:
+            ts = json.load(file)
+            return float(ts.get("timestamp"))
+    except Exception as e:
+        flask_app.logger.info("Timestamp load exception: {}".format(e))
+        return None
+    
+    """
     db_timestamp = ddb.get_db_record(timestamp_key, "TIMESTAMP")
     flask_app.logger.debug("Loaded timestamp from db: {}".format(db_timestamp))
     
@@ -376,7 +419,14 @@ def load_timestamp(timestamp_key):
     except Exception as e:
         flask_app.logger.debug("timestamp exception: {}".format(e))
         return None
-
+    """
+        
+def get_timestamp_file(timestamp_key):
+    return STORAGE_PATH + TIMESTAMP_FILE.format(timestamp_key)
+    
+def secure_scheme(scheme):
+    return re.sub(r"^http$", "https", scheme)
+        
 # Flask part of the code
 
 """
@@ -390,11 +440,13 @@ def startup():
     
     Create DynamoDB storage singleton. Start the main loop thread.
     """
+    """
     global ddb
     
     ddb = DDB_Single_Table()
     flask_app.logger.debug("initialize DDB object {}".format(ddb))
-        
+    """
+    
     flask_app.logger.debug("Starting event check...")
     # check_events(EVENT_CHECK_INTERVALl)
     thread_executor.submit(check_events, EVENT_CHECK_INTERVAL)
@@ -510,8 +562,8 @@ def o365_auth():
     flask_app.logger.debug("input state: {}".format(my_state))
     
     myUrlParts = urlparse(request.url)
-    # full_redirect_uri = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("o365_do_auth")
-    full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("o365_do_auth")
+    full_redirect_uri = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("o365_do_auth")
+    # full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("o365_do_auth")
     flask_app.logger.debug("Authorize redirect URL: {}".format(full_redirect_uri))
 
     # callback = quote(full_redirect_uri, safe="")
@@ -543,7 +595,6 @@ def o365_do_auth():
     """
     global o365_account_changed
     
-    # token_backend = FileSystemTokenBackend(token_path='.', token_filename='o365_token.txt')
     my_state = request.args.get("state", O365_LOCAL_USER_KEY)
     flask_app.logger.debug("O365 state: {}".format(my_state))
     
@@ -554,8 +605,8 @@ def o365_do_auth():
 
     # rebuild the redirect_uri used in auth_step_one
     myUrlParts = urlparse(request.url)
-    # full_redirect_uri = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("o365_do_auth")
-    full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("o365_do_auth")
+    full_redirect_uri = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("o365_do_auth")
+    # full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("o365_do_auth")
     flask_app.logger.debug("Authorize doauth redirect URL: {}".format(full_redirect_uri))
 
     # callback = quote(full_redirect_uri, safe="")

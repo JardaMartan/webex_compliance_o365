@@ -5,9 +5,8 @@ networks:
     # name: wx_o365_net
     
 volumes:  
-  dynamodb-o365:
-    driver: local
   config:
+  token-storage:
 
 services: 
   webex_compliance_o365:
@@ -29,8 +28,6 @@ services:
 #   -s, --skip_timestamp  Ignore stored timestamp and monitor the events just from the application start, default: no
     command: python wxt_compliance_o365.py -vv -fnca # -fnmwcas -l en_US
     container_name: webex-compliance-o365
-    depends_on:
-      - dynamodb_o365
     ports:
       - "443:5050"
     environment:
@@ -77,17 +74,5 @@ services:
       - wx_o365_net
     volumes:
       - ./config:/config:z # ":z" avoids permission error in SELinux, see: https://blog.cyplo.dev/posts/2016/12/using-ad-hoc-docker-volumes-on-selinux-enabled-systems/
+      - token-storage:/token_storage/data
     image: jardamartan/webex_compliance_o365
-
-  dynamodb_o365:
-    build:
-      context: .
-      dockerfile: Dockerfile-dynamo
-    image: dynamo-o365
-    container_name: dynamodb-o365
-    command: -jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data
-    restart: always
-    volumes:
-      - dynamodb-o365:/home/dynamodblocal/data
-    networks:
-      - wx_o365_net
