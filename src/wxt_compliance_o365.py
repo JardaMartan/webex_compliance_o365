@@ -1028,8 +1028,9 @@ def send_compliance_message(wxt_client, wxt_user_id, room_id, message, xargs, ac
         
     wxt_client.messages.create(roomId = room_id, markdown = message, **xargs)
 
-    if not membership_found:
-        wxt_client.memberships.delete(my_membership.id)
+    # remove Bot from the Space
+    # if not membership_found:
+    #     wxt_client.memberships.delete(my_membership.id)
     
 def find_o365_group(o365_account, group_name = None):
     """
