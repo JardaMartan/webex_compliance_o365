@@ -834,12 +834,12 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
     Handle Webex Events API query result
     """
     try:
-        flask_app.logger.info("Event: {}".format(event))
-        
         if event.actorId in (wxt_user_id, wxt_bot_id):
             flask_app.logger.debug("ignore my own action")
             return
 
+        flask_app.logger.info("Event: {}".format(event))
+            
         actor = wxt_client.people.get(event.actorId)
         
         config = load_config()
