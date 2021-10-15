@@ -762,9 +762,9 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                     to_stamp = to_time.isoformat(timespec="milliseconds")+"Z"
                     flask_app.logger.debug("check interval {} - {}".format(from_stamp, to_stamp))
                     event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
-                    # TODO: do this in thread
+                    # TODO: do this in thread max_workers=5
                     flask_app.logger.debug("event handling start at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as event_executor:
+                    with concurrent.futures.ThreadPoolExecutor() as event_executor:
                         for event in event_list:
                             event_executor.submit(handle_event, event, wxt_client, wxt_bot, o365_account, options)
                     flask_app.logger.debug("event handling end at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
@@ -827,7 +827,13 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
         except Exception as e:
             flask_app.logger.error("check_events() loop exception: {}".format(e))
         finally:
-            time.sleep(check_interval)
+            now_check = datetime.utcnow()
+            diff = (now_check - to_time).total_seconds()
+            flask_app.logger.info("event processing took {} seconds".format(diff))
+            if diff < check_interval:
+                time.sleep(check_interval - int(diff))
+            else:
+                flask_app.logger.error("EVENT PROCESSING IS TAKING TOO LONG ({}), PERFORMANCE IMPROVEMENT NEEDED".format(diff))
             
 def handle_event(event, wxt_client, wxt_bot, o365_account, options):
     """
