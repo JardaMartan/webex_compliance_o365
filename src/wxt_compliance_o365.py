@@ -764,9 +764,13 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                     event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
                     # TODO: do this in thread max_workers=5
                     flask_app.logger.debug("event handling start at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
+                    config = load_config()
                     with concurrent.futures.ThreadPoolExecutor() as event_executor:
                         for event in event_list:
-                            event_executor.submit(handle_event, event, wxt_client, wxt_bot, o365_account, options)
+                            if event.actorId in (wxt_user_id, wxt_bot_id):
+                                flask_app.logger.debug("ignore my own action")
+                            else:
+                                event_executor.submit(handle_event, event, wxt_client, wxt_bot, o365_account, options, config)
                     flask_app.logger.debug("event handling end at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
                     
                 except ApiError as e:
@@ -835,20 +839,14 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
             else:
                 flask_app.logger.error("EVENT PROCESSING IS TAKING TOO LONG ({}), PERFORMANCE IMPROVEMENT NEEDED".format(diff))
             
-def handle_event(event, wxt_client, wxt_bot, o365_account, options):
+def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
     """
     Handle Webex Events API query result
     """
     try:
-        if event.actorId in (wxt_user_id, wxt_bot_id):
-            flask_app.logger.debug("ignore my own action")
-            return
-
         flask_app.logger.info("Event: {}".format(event))
             
         actor = wxt_client.people.get(event.actorId)
-        
-        config = load_config()
         
         # if we run in a test mode (--check_actor option), the actions take place
         # only for configured users
