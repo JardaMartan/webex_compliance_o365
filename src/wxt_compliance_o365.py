@@ -836,7 +836,12 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
     try:
         flask_app.logger.info("Event: {}".format(event))
         
+        if event.actorId in (wxt_user_id, wxt_bot_id):
+            flask_app.logger.debug("ignore my own action")
+            return
+
         actor = wxt_client.people.get(event.actorId)
+        
         config = load_config()
         
         # if we run in a test mode (--check_actor option), the actions take place
@@ -847,7 +852,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options):
             if not any(actor.emails[0].lower() in act_member.lower() for act_member in actor_list):
                 flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
                 return
-        
+                
         room_info = wxt_client.rooms.get(event.data.roomId)
         flask_app.logger.info("Room info: {}".format(room_info))
         
