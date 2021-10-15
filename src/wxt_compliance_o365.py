@@ -23,7 +23,7 @@ from ddb_single_table_obj import DDB_Single_Table
 """
 
 from O365 import Account, FileSystemTokenBackend
-from o365_db_token_storage import DBTokenBackend
+# from o365_db_token_storage import DBTokenBackend
 from o365_group import Group
 
 import json, requests
