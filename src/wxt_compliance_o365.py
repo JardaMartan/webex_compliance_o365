@@ -1004,7 +1004,7 @@ def send_compliance_message(wxt_client, wxt_user_id, room_id, message, xargs, ac
             membership_found = True
             flask_app.logger.info("found existing membership: {}".format(existing_membership))
     except ApiError as e:
-        flask_app.logger.info("Membership API request error: {}".format(e))
+        flask_app.logger.debug("client's (Bot) membership not found")
     
     if not membership_found:
         actor_client = act_on_behalf_client if act_on_behalf_client else wxt_client
