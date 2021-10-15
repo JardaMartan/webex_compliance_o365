@@ -762,9 +762,12 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                     to_stamp = to_time.isoformat(timespec="milliseconds")+"Z"
                     flask_app.logger.debug("check interval {} - {}".format(from_stamp, to_stamp))
                     event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
-                    for event in event_list:
-                        # TODO: do this in thread
-                        handle_event(event, wxt_client, wxt_bot, o365_account, options)
+                    # TODO: do this in thread
+                    flask_app.logger.debug("event handling start at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as event_executor:
+                        for event in event_list:
+                            event_executor.submit(handle_event, event, wxt_client, wxt_bot, o365_account, options)
+                    flask_app.logger.debug("event handling end at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
                     
                 except ApiError as e:
                     flask_app.logger.error("API request error: {}".format(e))
