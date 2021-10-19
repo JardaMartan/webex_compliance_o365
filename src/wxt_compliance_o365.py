@@ -854,8 +854,9 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
             if not any(actor.emails[0].lower() in act_member.lower() for act_member in actor_list):
                 flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
                 return
-                
-        flask_app.logger.info("Event: {}".format(event))
+        
+        if event.resource != "messages":
+            flask_app.logger.info("Event: {}".format(event))
                     
         room_info = wxt_client.rooms.get(event.data.roomId)
         flask_app.logger.info("Room info: {}".format(room_info))
