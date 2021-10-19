@@ -844,8 +844,6 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
     Handle Webex Events API query result
     """
     try:
-        flask_app.logger.info("Event: {}".format(event))
-            
         actor = wxt_client.people.get(event.actorId)
         
         # if we run in a test mode (--check_actor option), the actions take place
@@ -857,6 +855,8 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                 flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
                 return
                 
+        flask_app.logger.info("Event: {}".format(event))
+                    
         room_info = wxt_client.rooms.get(event.data.roomId)
         flask_app.logger.info("Room info: {}".format(room_info))
         
