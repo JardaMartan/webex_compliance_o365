@@ -176,6 +176,7 @@ options = {
 statistics = {
     "started": datetime.utcnow(),
     "events": 0,
+    "max_time": 0,
     "resources": {},
     "files": {
         "scanned": 0,
@@ -847,6 +848,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
             now_check = datetime.utcnow()
             diff = (now_check - to_time).total_seconds()
             flask_app.logger.info("event processing took {} seconds".format(diff))
+            statistics["max_time"] = max(statistics["max_time"], diff)
             if diff < check_interval:
                 time.sleep(check_interval - int(diff))
             else:
@@ -1061,8 +1063,9 @@ Up: {}
 
 Event statistics
 Total events: {}
+Maximum processing time: {:0.2f}s
 {}
-""".format(start_time, diff_time, statistics["events"], res_str)
+""".format(start_time, diff_time, statistics["events"], statistics["max_time"], res_str)
     
     return result
             
