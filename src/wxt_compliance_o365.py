@@ -29,7 +29,7 @@ from o365_group import Group
 import json, requests
 from datetime import datetime, timedelta, timezone
 import time
-from flask import Flask, request, redirect, url_for, Response
+from flask import Flask, request, redirect, url_for, Response, make_response
 
 import concurrent.futures
 import signal
@@ -170,6 +170,17 @@ options = {
     "check_actor": False,
     "skip_timestamp": False,
     "language": "cs_CZ"
+}
+
+# statistics
+statistics = {
+    "started": datetime.utcnow(),
+    "events": 0,
+    "resources": {},
+    "files": {
+        "scanned": 0,
+        "deleted": 0
+    }
 }
 
 class AccessTokenAbs(AccessToken):
@@ -462,7 +473,9 @@ def hello():
     Returns:
         str: something highly informative
     """
-    return "Hello World!"
+    response = make_response(format_event_stats(), 200)
+    response.mimetype = "text/plain"
+    return response
 
 """
 OAuth proccess done
@@ -843,6 +856,8 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
     """
     Handle Webex Events API query result
     """
+    global statistics
+    
     try:
         actor = wxt_client.people.get(event.actorId)
         
@@ -855,6 +870,8 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                 flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
                 return
         
+        save_event_stats(event)
+
         if event.resource != "messages":
             flask_app.logger.info("Event: {}".format(event))
                     
@@ -959,6 +976,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
             if options["file_events"] and hasattr(event.data, "files"):
                 hdr = {"Authorization": "Bearer " + wxt_client.access_token}
                 for url in event.data.files:
+                    statistics["files"]["scanned"] += 1
                     file_info = requests.head(url, headers = hdr)
                     flask_app.logger.info("Message file: {}\ninfo: {}".format(url, file_info.headers))
                     
@@ -977,6 +995,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                             break
                             
                     if not allowed_found:
+                        statistics["files"]["deleted"] += 1
                         wxt_client.messages.delete(event.data.id)
                         xargs = {
                             "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_LINK_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
@@ -986,6 +1005,66 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                             xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)          
     except Exception as e:
         flask_app.logger.error("handle_event() exception: {}".format(e))
+        
+def save_event_stats(event):
+    """
+    Save statistics
+    
+    Saves statistics to a "statistics" singleton
+    
+    Parameters:
+        event (Event): Event API response object
+    """
+    global statistics
+    
+    statistics["events"] += 1
+    counter_ref = statistics["resources"].get(event.resource)
+    if counter_ref is None:
+        statistics["resources"][event.resource] = {}
+        counter = 0
+    else:
+        counter = counter_ref.get(event.type, 0)
+    counter += 1
+    flask_app.logger.debug("save_event_stats() counter for {}/{} is now: {}".format(event.resource, event.type, counter))
+    statistics["resources"][event.resource][event.type] = counter
+    
+def format_event_stats():
+    """
+    Format event statistics for print
+    
+    Returns:
+        str: formatted statistics
+    """
+    global statistics
+    
+    res_str = ""
+    for res_key, res_value in statistics["resources"].items():
+        res_str += "{}:\n".format(res_key)
+        for type_key, type_value in statistics["resources"][res_key].items():
+            res_str += "{:<4}{:>14}:{:8d}\n".format("", type_key, type_value)
+            
+    res_str += "files:\n"
+    for f_key, f_value in statistics["files"].items():
+        res_str += "{:<4}{:>14}:{:8d}\n".format("", f_key, f_value)
+            
+    start_time = "{:%d.%m.%Y %H:%M:%S GMT}".format(statistics["started"])
+    now = datetime.utcnow()
+    time_diff = now - statistics["started"]
+    hours, remainder = divmod(time_diff.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    diff_time = "{}d {:02d}:{:02d}:{:02d}".format(time_diff.days, int(hours), int(minutes), int(seconds))
+    result = """Compliance Monitor
+
+Started: {}
+Up: {}
+
+Event statistics
+Total events: {}
+{}
+""".format(start_time, diff_time, statistics["events"], res_str)
+    
+    return result
             
 def send_compliance_message(wxt_client, wxt_user_id, room_id, message, xargs, act_on_behalf_client = None, act_on_behalf_client_id = None):
     """
