@@ -783,7 +783,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                     # TODO: do this in thread max_workers=5
                     flask_app.logger.debug("event handling start at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
                     config = load_config()
-                    with concurrent.futures.ThreadPoolExecutor() as event_executor:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as event_executor:
                         for event in event_list:
                             if event.actorId in (wxt_user_id, wxt_bot_id):
                                 flask_app.logger.debug("ignore my own action")
