@@ -178,9 +178,13 @@ statistics = {
     "events": 0,
     "max_time": 0,
     "resources": {},
-    "files": {
+    "file_types": {
         "scanned": 0,
         "deleted": 0
+    },
+    "aad_check": {
+        "checked": 0,
+        "rejected": 0
     }
 }
 
@@ -939,6 +943,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
             if event.type == "created" and room_info.teamId and options["check_aad_user"]:
                 team_info = wxt_bot.teams.get(room_info.teamId)
                 user_account = get_o365_user_account(o365_account, event.data.personEmail)
+                statistics["aad_check"]["checked"] += 1
                 if not user_account:
                     flask_app.logger.info("user {} not found in directory".format(event.data.personEmail))
                     if hasattr(event.data, "personDisplayName"):
@@ -949,6 +954,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                     wxt_bot.messages.create(roomId = event.data.roomId, markdown = "Uživatel nemá O365 účet.", attachments = [bc.wrap_form(form)])
                     flask_app.logger.info("Deleting team membership for user {}".format(event.data.personEmail))
                     wxt_bot.memberships.delete(event.data.id)
+                    statistics["aad_check"]["rejected"] += 1
                     
             # check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
             if room_info.teamId and options["webex_user_sync"]:
@@ -978,7 +984,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
             if options["file_events"] and hasattr(event.data, "files"):
                 hdr = {"Authorization": "Bearer " + wxt_client.access_token}
                 for url in event.data.files:
-                    statistics["files"]["scanned"] += 1
+                    statistics["file_types"]["scanned"] += 1
                     file_info = requests.head(url, headers = hdr)
                     flask_app.logger.info("Message file: {}\ninfo: {}".format(url, file_info.headers))
                     
@@ -997,7 +1003,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                             break
                             
                     if not allowed_found:
-                        statistics["files"]["deleted"] += 1
+                        statistics["file_types"]["deleted"] += 1
                         wxt_client.messages.delete(event.data.id)
                         xargs = {
                             "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_LINK_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
@@ -1045,9 +1051,10 @@ def format_event_stats():
         for type_key, type_value in statistics["resources"][res_key].items():
             res_str += "{:<4}{:>14}:{:8d}\n".format("", type_key, type_value)
             
-    res_str += "files:\n"
-    for f_key, f_value in statistics["files"].items():
-        res_str += "{:<4}{:>14}:{:8d}\n".format("", f_key, f_value)
+    for other_key in ("file_types", "aad_check"):
+        res_str += "{}:\n".format(other_key)        
+        for f_key, f_value in statistics[other_key].items():
+            res_str += "{:<4}{:>14}:{:8d}\n".format("", f_key, f_value)
             
     start_time = "{:%d.%m.%Y %H:%M:%S GMT}".format(statistics["started"])
     now = datetime.utcnow()
