@@ -1286,8 +1286,6 @@ if __name__ == "__main__":
             
     flask_app.logger.info("Logging level: {}".format(logging.getLogger(__name__).getEffectiveLevel()))
     
-    flask_app.logger.info("Using database: {} - {}".format(os.getenv("DYNAMODB_ENDPOINT_URL"), os.getenv("DYNAMODB_TABLE_NAME")))
-    
     flask_app.logger.info("TESTVAR: {}".format(os.getenv("TESTVAR")))
     
     options["file_events"] = args.file_events
