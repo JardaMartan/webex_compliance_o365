@@ -887,60 +887,28 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
         # Space membership change
         # there is an additional set of actions if a new Team is created
         if event.resource == "memberships" and event.type in ["created","deleted"] and room_info.type == "group" and not event.actorId == wxt_user_id:
+            if event.type == "created" and room_info.teamId:
+                # make sure Bot is a moderator of the Team
+                flask_app.logger.info("Make sure Bot is a Team moderator")
+                bot_added_to_team = add_moderator(room_info, wxt_client, wxt_bot, wxt_bot_id)
             if event.type == "created" and room_info.creatorId == event.data.personId:                             
-                flask_app.logger.info("send notification")
-
-                # new team created. Add Bot as a Team moderator
-                if room_info.teamId:
-                    flask_app.logger.info("Room is part of a team")
-                    if event.type == "created":
-                        my_team_membership = None
-                        try:
-                            my_team_membership_list = wxt_bot.team_memberships.list(room_info.teamId)
-                            for team_membership in my_team_membership_list:
-                                if team_membership.personId == wxt_bot_id:
-                                    my_team_membership = team_membership
-                                    flask_app.logger.info("existing team membership: {}".format(my_team_membership))
-                                    break
-                        except ApiError as e:
-                            flask_app.logger.info("New team created")
-                            
-                        if not my_team_membership:
-                            # somehow team membership API doesn't work
-                            # my_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_user_id, isModerator = True)
-                            flask_app.logger.debug("Adding myself as Team moderator")
-                            my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id, isModerator = True)
-                            flask_app.logger.debug("Adding bot as Team moderator")
-                            bot_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_bot_id, isModerator = True)
-                            flask_app.logger.debug("Removing myself as Team moderator")
-                            wxt_client.memberships.delete(my_membership.id)
-                            if options["notify"]:
-                                flask_app.logger.debug("Send compliance message")
-                                wxt_bot.messages.create(roomId = room_info.id,
-                                    markdown = "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                    attachments = [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))])
-                        else:
-                            # flask_app.logger.debug("Adding myself to the Team Space")
-                            # my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id)
-                            if options["notify"]:
-                                flask_app.logger.debug("Send compliance message")
-                                xargs = {
-                                    "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
-                                }
-                                send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
-                                    "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                                    xargs)
-                                                        
-                else:
+                # new team/space created
+                flask_app.logger.info("New {} created".format("Team" if room_info.teamId else "Space"))
+                    
+                if options["notify"]:
+                    flask_app.logger.debug("Send compliance message")
                     xargs = {
                         "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
                     }
-                    send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
-                        "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
-                        xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)
+                    msg = "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
+                    if room_info.teamId and bot_added_to_team:                            
+                        wxt_bot.messages.create(roomId = room_info.id, markdown = msg, **xargs)                                                        
+                    else:
+                        send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId, msg,
+                            xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)
                         
             # check if a newly added user has an account in AzureAD
-            if event.type == "created" and room_info.teamId and options["check_aad_user"]:
+            if event.type == "created" and room_info.teamId and options["check_aad_user"] and event.data.personId != wxt_bot_id:
                 team_info = wxt_bot.teams.get(room_info.teamId)
                 user_account = get_o365_user_account(o365_account, event.data.personEmail)
                 statistics["aad_check"]["checked"] += 1
@@ -1013,6 +981,36 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                             xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)          
     except Exception as e:
         flask_app.logger.error("handle_event() exception: {}".format(e))
+
+def add_moderator(room_info, wxt_client, bot_api, bot_id):
+    bot_team_membership = None
+    bot_added_to_team = False
+    try:
+        bot_team_membership_list = bot_api.team_memberships.list(room_info.teamId)
+        for team_membership in bot_team_membership_list:
+            if team_membership.personId == bot_id:
+                bot_team_membership = team_membership
+                flask_app.logger.info("existing team membership: {}".format(bot_team_membership))
+                break
+    except ApiError as e:
+        flask_app.logger.info("Bot Team membership doesn't exist")
+        
+    if not bot_team_membership:
+        # somehow team membership API doesn't work
+        # my_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_user_id, isModerator = True)
+        flask_app.logger.debug("Adding myself as Team moderator")
+        my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id, isModerator = True)
+        flask_app.logger.debug("Adding bot as Team moderator")
+        try:
+            bot_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = bot_id, isModerator = True)
+            bot_added_to_team = True
+        except ApiError as e:
+            flask_app.logger.error("Bot Team membership not created: {}".format(e))
+            
+        flask_app.logger.debug("Removing myself as Team moderator")
+        wxt_client.memberships.delete(my_membership.id)
+        
+    return bot_added_to_team
         
 def save_event_stats(event):
     """
