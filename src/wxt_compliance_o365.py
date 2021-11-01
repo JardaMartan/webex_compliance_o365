@@ -37,6 +37,24 @@ import re
 
 import buttons_cards as bc
 
+from logging.config import dictConfig
+
+dictConfig({
+    'version': 1,
+    'formatters': {'default': {
+        'format': '[%(asctime)s] %(levelname)7s in %(module)s: %(message)s',
+    }},
+    'handlers': {'wsgi': {
+        'class': 'logging.StreamHandler',
+        'stream': 'ext://flask.logging.wsgi_errors_stream',
+        'formatter': 'default'
+    }},
+    'root': {
+        'level': 'INFO',
+        'handlers': ['wsgi']
+    }
+})
+
 flask_app = Flask(__name__)
 flask_app.config["DEBUG"] = True
 requests.packages.urllib3.disable_warnings()
@@ -177,6 +195,7 @@ statistics = {
     "started": datetime.utcnow(),
     "events": 0,
     "max_time": 0,
+    "max_time_at": datetime.now(),
     "resources": {},
     "file_types": {
         "scanned": 0,
@@ -852,7 +871,9 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
             now_check = datetime.utcnow()
             diff = (now_check - to_time).total_seconds()
             flask_app.logger.info("event processing took {} seconds".format(diff))
-            statistics["max_time"] = max(statistics["max_time"], diff)
+            if diff > statistics["max_time"]:
+                statistics["max_time"] = diff
+                statistics["max_time_at"] = datetime.now()
             if diff < check_interval:
                 time.sleep(check_interval - int(diff))
             else:
@@ -1054,7 +1075,8 @@ def format_event_stats():
         for f_key, f_value in statistics[other_key].items():
             res_str += "{:<4}{:>14}:{:8d}\n".format("", f_key, f_value)
             
-    start_time = "{:%d.%m.%Y %H:%M:%S GMT}".format(statistics["started"])
+    start_time = "{:%Y-%m-%d %H:%M:%S GMT}".format(statistics["started"])
+    max_timestamp = "{:%Y-%m-%d %H:%M:%S}".format(statistics["max_time_at"])
     now = datetime.utcnow()
     time_diff = now - statistics["started"]
     hours, remainder = divmod(time_diff.seconds, 3600)
@@ -1068,9 +1090,9 @@ Up: {}
 
 Event statistics
 Total events: {}
-Maximum processing time: {:0.2f}s
+Maximum processing time: {:0.2f}s at {}
 {}
-""".format(start_time, diff_time, statistics["events"], statistics["max_time"], res_str)
+""".format(start_time, diff_time, statistics["events"], statistics["max_time"], max_timestamp, res_str)
     
     return result
             
