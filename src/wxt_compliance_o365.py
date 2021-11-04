@@ -30,6 +30,7 @@ import json, requests
 from datetime import datetime, timedelta, timezone
 import time
 from flask import Flask, request, redirect, url_for, Response, make_response
+from flask.logging import default_handler
 
 import concurrent.futures
 import signal
@@ -37,29 +38,30 @@ import re
 
 import buttons_cards as bc
 
+logger = logging.getLogger()
+logger.addHandler(default_handler)
+
 from logging.config import dictConfig
 
-dictConfig({
-    'version': 1,
-    'formatters': {'default': {
-        'format': '[%(asctime)s] %(levelname)7s in %(module)s: %(message)s',
-    }},
-    'handlers': {'wsgi': {
-        'class': 'logging.StreamHandler',
-        'stream': 'ext://flask.logging.wsgi_errors_stream',
-        'formatter': 'default'
-    }},
-    'root': {
-        'level': 'INFO',
-        'handlers': ['wsgi']
-    }
-})
+# dictConfig({
+#     'version': 1,
+#     'formatters': {'default': {
+#         'format': '[%(asctime)s] %(levelname)7s in %(module)s: %(message)s',
+#     }},
+    # 'handlers': {'wsgi': {
+    #     'class': 'logging.StreamHandler',
+    #     'stream': 'ext://flask.logging.wsgi_errors_stream',
+    #     'formatter': 'default'
+    # }},
+    # 'root': {
+    #     'level': 'INFO',
+    #     'handlers': ['wsgi']
+    # }
+# })
 
 flask_app = Flask(__name__)
 flask_app.config["DEBUG"] = True
 requests.packages.urllib3.disable_warnings()
-
-logger = logging.getLogger()
 
 # DynamoDB singleton. Needs to be initialized at the start of the application.
 # ddb = None
@@ -801,7 +803,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                     event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
                     # TODO: do this in thread max_workers=5
                     flask_app.logger.debug("event handling start at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
-                    config = load_config()
+                    config = load_config(options)
                     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as event_executor:
                         for event in event_list:
                             if event.actorId in (wxt_user_id, wxt_bot_id):
@@ -865,9 +867,6 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
 
             # save timestamp
             save_timestamp(TIMESTAMP_KEY, to_time.timestamp())
-        except Exception as e:
-            flask_app.logger.error("check_events() loop exception: {}".format(e))
-        finally:
             now_check = datetime.utcnow()
             diff = (now_check - to_time).total_seconds()
             flask_app.logger.info("event processing took {} seconds".format(diff))
@@ -878,6 +877,11 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                 time.sleep(check_interval - int(diff))
             else:
                 flask_app.logger.error("EVENT PROCESSING IS TAKING TOO LONG ({}), PERFORMANCE IMPROVEMENT NEEDED".format(diff))
+        except Exception as e:
+            flask_app.logger.error("check_events() loop exception: {}".format(e))
+            time.sleep(check_interval)
+        finally:
+            pass
             
 def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
     """
@@ -1243,7 +1247,7 @@ def get_o365_group_members(o365_account, group_id):
         res_json = result.json()
         return res_json["value"]
         
-def load_config():
+def load_config(options):
     """
     Load the configuration file.
     
@@ -1252,6 +1256,10 @@ def load_config():
     """
     with open("/config/config.json") as file:
         config = json.load(file)
+    
+    opt = config.get("options", {})
+    for key, value in opt.items():
+        options[key] = value
     return config
         
 def start_runner():
@@ -1317,10 +1325,10 @@ if __name__ == "__main__":
     options["skip_timestamp"] = args.skip_timestamp
     options["language"] = args.language
         
+    config = load_config(options)
+
     flask_app.logger.info("OPTIONS: {}".format(options))
     
-    config = load_config()
-
     flask_app.logger.info("CONFIG: {}".format(config))
 
     start_runner()
