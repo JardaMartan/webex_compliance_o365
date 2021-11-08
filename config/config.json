@@ -6,6 +6,7 @@
   ],
   "options": {
     "check_actor": true,
+    "team_space_moderation": true,
     "language": "cs_CZ"
   }
 }
