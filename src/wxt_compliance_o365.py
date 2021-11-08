@@ -35,6 +35,7 @@ from flask.logging import default_handler
 import concurrent.futures
 import signal
 import re
+import base64
 
 import buttons_cards as bc
 
@@ -908,18 +909,30 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
             flask_app.logger.info("Event: {}".format(event))
                     
         room_info = wxt_client.rooms.get(event.data.roomId)
+        room_id = base64.b64decode(room_info.id)
+        room_uuid = room_id.decode("ascii").split("/")[-1] # uuid is the last element of room id
+        
         flask_app.logger.info("Room info: {}".format(room_info))
         
         # Space membership change
         # there is an additional set of actions if a new Team is created
         if event.resource == "memberships" and event.type in ["created","deleted"] and room_info.type == "group" and not event.actorId == wxt_user_id:
+            event_in_general_space = False
+            new_team = False
             if event.type == "created" and room_info.teamId:
                 # make sure Bot is a moderator of the Team
                 flask_app.logger.info("Make sure Bot is a Team moderator")
                 bot_added_to_team = add_moderator(room_info, wxt_client, wxt_bot, wxt_bot_id)
+                team_info = wxt_client.teams.get(room_info.teamId)
+                team_id = base64.b64decode(team_info.id)
+                team_uuid = team_id.decode("ascii").split("/")[-1] # uuid is the last element of team id
+                
+                event_in_general_space = team_uuid == room_uuid
+                new_team = event_in_general_space and team_info.creatorId == event.data.personId
+                flask_app.logger.info(f"event in general space: {event_in_general_space}, new team: {new_team}")
             if event.type == "created" and room_info.creatorId == event.data.personId:                             
                 # new team/space created
-                flask_app.logger.info("New {} created".format("Team" if room_info.teamId else "Space"))
+                flask_app.logger.info("New {} created".format("Team" if new_team else "Space"))
                 
                 # make the Space moderated if it's part of a Team
                 if options["team_space_moderation"] and room_info.teamId:
@@ -943,8 +956,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                             xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)
                         
             # check if a newly added user has an account in AzureAD
-            if event.type == "created" and room_info.teamId and options["check_aad_user"] and event.data.personId != wxt_bot_id:
-                team_info = wxt_bot.teams.get(room_info.teamId)
+            if event.type == "created" and event_in_general_space and options["check_aad_user"] and event.data.personId != wxt_bot_id:
                 user_account = get_o365_user_account(o365_account, event.data.personEmail)
                 statistics["aad_check"]["checked"] += 1
                 if not user_account:
