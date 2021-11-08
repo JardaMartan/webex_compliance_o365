@@ -189,6 +189,7 @@ options = {
     "check_aad_user": False,
     "check_actor": False,
     "skip_timestamp": False,
+    "team_space_moderation": False,
     "language": "cs_CZ"
 }
 
@@ -919,6 +920,15 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
             if event.type == "created" and room_info.creatorId == event.data.personId:                             
                 # new team/space created
                 flask_app.logger.info("New {} created".format("Team" if room_info.teamId else "Space"))
+                
+                # make the Space moderated if it's part of a Team
+                if options["team_space_moderation"] and room_info.teamId:
+                    try:
+                        flask_app.logger.info(f"Assign {event.data.personEmail} as a Space moderator")
+                        wxt_bot.memberships.create(roomId = room_info.id, personId = wxt_bot_id, isModerator = True)
+                        wxt_bot.memberships.update(event.data.id, isModerator = True)
+                    except ApiError as e:
+                        flask_app.logger.info("Update membership error: {}".format(e))
                     
                 if options["notify"]:
                     flask_app.logger.debug("Send compliance message")
@@ -1301,6 +1311,7 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--webex_user_sync", action='store_true', help="Sync Webex Team members to M365 Group of the same name, default: no")
     parser.add_argument("-a", "--check_actor", action='store_true', help="Perform actions only if the Webex Event actor is in the \"actors\" list from the /config/config.json file, default: no")
     parser.add_argument("-s", "--skip_timestamp", action='store_true', help="Ignore stored timestamp and monitor the events just from the application start, default: no")
+    parser.add_argument("-t", "--team_space_moderation", action='store_true', help="Implicit team space moderation - any Space inside a Team is moderated by its creator, default: no")
     parser.add_argument("-l", "--language", default = "cs_CZ", help="Language (see localization_strings.LANGUAGE), default: cs_CZ")
     
     args = parser.parse_args()
@@ -1323,6 +1334,7 @@ if __name__ == "__main__":
     options["check_aad_user"] = args.check_aad_user
     options["check_actor"] = args.check_actor
     options["skip_timestamp"] = args.skip_timestamp
+    options["team_space_moderation"] = args.team_space_moderation
     options["language"] = args.language
         
     config = load_config(options)
