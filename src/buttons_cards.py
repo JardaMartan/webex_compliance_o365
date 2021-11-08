@@ -250,11 +250,11 @@ USER_WARNING_FORM = {
                     "title": "{{button_guide}}",
                     "url": "{{url_idm_guide}}"
                 },
-                {
-                    "type": "Action.OpenUrl",
-                    "title": "{{button_idm}}",
-                    "url": "{{url_idm}}"
-                }
+                # {
+                #     "type": "Action.OpenUrl",
+                #     "title": "{{button_idm}}",
+                #     "url": "{{url_idm}}"
+                # }
             ],
             "horizontalAlignment": "Right"
         }
