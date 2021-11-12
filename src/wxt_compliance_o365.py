@@ -25,6 +25,7 @@ from ddb_single_table_obj import DDB_Single_Table
 from O365 import Account, FileSystemTokenBackend
 # from o365_db_token_storage import DBTokenBackend
 from o365_group import Group
+from o365_subscription import Subscription
 
 import json, requests
 from datetime import datetime, timedelta, timezone
@@ -706,10 +707,23 @@ def o365_webhook():
         
     elif request.method == "GET":
         #TODO: subscription setup
-        pass
+        o365_account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
+        
+        subscription = Subscription(o365_account)
+        # sub_list = subscription.list()
+        # flask_app.logger.info(f"Existing subscriptions: {sub_list.json()}")
+        myUrlParts = urlparse(request.url)
+        webhook_url = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + myUrlParts.path
+        my_sub = subscription.create("groups", "updated,deleted", webhook_url, expiresIn=3600)
+        json_data = my_sub.json()
+        flask_app.logger.info(f"Subscription created: {json_data}")
+        if my_sub.ok:
+            response = make_response(f"subscription id: {json_data['id']}", 200)
+            response.mimetype = "text/plain"
+            return response
     
     return "OK"
-
+    
 def check_events(check_interval=EVENT_CHECK_INTERVAL):
     """
     Check events API thread.
@@ -1298,7 +1312,7 @@ def start_runner():
         while not_started:
             logger.info('In start loop')
             try:
-                r = requests.get('https://127.0.0.1:5050/', proxies=no_proxies, verify=False)
+                r = requests.get('http://127.0.0.1:5050/', proxies=no_proxies, verify=False)
                 if r.status_code == 200:
                     logger.info('Server started, quiting start_loop')
                     not_started = False
@@ -1356,4 +1370,4 @@ if __name__ == "__main__":
     flask_app.logger.info("CONFIG: {}".format(config))
 
     start_runner()
-    flask_app.run(host="0.0.0.0", port=5050, ssl_context='adhoc')
+    flask_app.run(host="0.0.0.0", port=5050) #, ssl_context='adhoc')
