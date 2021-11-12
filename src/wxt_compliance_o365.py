@@ -996,7 +996,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
         if event.resource == "messages" and event.type == "created" and not event.actorId == wxt_user_id:
             # message_info = wxt_client.messages.get(event.data.id)
             # flask_app.logger.info("Message info: {}".format(message_info))
-            if options["file_events"] and hasattr(event.data, "files"):
+            if options["file_events"] and hasattr(event.data, "files") and room_info.type == "group":
                 hdr = {"Authorization": "Bearer " + wxt_client.access_token}
                 for url in event.data.files:
                     statistics["file_types"]["scanned"] += 1
