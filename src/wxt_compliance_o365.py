@@ -4,6 +4,7 @@ import os
 import sys
 import uuid
 import logging
+import coloredlogs
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
@@ -39,8 +40,21 @@ import base64
 
 import buttons_cards as bc
 
-logger = logging.getLogger()
-logger.addHandler(default_handler)
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  [%(levelname)7s]  [%(module)s.%(name)s.%(funcName)s]:%(lineno)s %(message)s",
+    handlers=[
+        logging.FileHandler("/log/debug.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+coloredlogs.install(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    fmt="%(asctime)s  [%(levelname)7s]  [%(module)s.%(name)s.%(funcName)s]:%(lineno)s %(message)s",
+    logger=logger
+)
+# logger.addHandler(default_handler)
 
 from logging.config import dictConfig
 
@@ -160,7 +174,7 @@ TIMESTAMP_KEY = "LAST_CHECK"
 def sigterm_handler(_signo, _stack_frame):
     "When sysvinit sends the TERM signal, cleanup before exiting."
 
-    flask_app.logger.info("Received signal {}, exiting...".format(_signo))
+    logger.info("Received signal {}, exiting...".format(_signo))
     
     thread_executor._threads.clear()
     concurrent.futures.thread._threads_queues.clear()
@@ -228,10 +242,10 @@ class AccessTokenAbs(AccessToken):
         super().__init__(access_token_json)
         if not "expires_at" in self._json_data.keys():
             self._json_data["expires_at"] = str((datetime.now(timezone.utc) + timedelta(seconds = self.expires_in)).timestamp())
-        flask_app.logger.debug("Access Token expires in: {}s, at: {}".format(self.expires_in, self.expires_at))
+        logger.debug("Access Token expires in: {}s, at: {}".format(self.expires_in, self.expires_at))
         if not "refresh_token_expires_at" in self._json_data.keys():
             self._json_data["refresh_token_expires_at"] = str((datetime.now(timezone.utc) + timedelta(seconds = self.refresh_token_expires_in)).timestamp())
-        flask_app.logger.debug("Refresh Token expires in: {}s, at: {}".format(self.refresh_token_expires_in, self.refresh_token_expires_at))
+        logger.debug("Refresh Token expires in: {}s, at: {}".format(self.refresh_token_expires_in, self.refresh_token_expires_at))
         
     @property
     def expires_at(self):
@@ -250,7 +264,7 @@ def save_tokens(token_key, tokens):
     """
     global token_refreshed
     
-    flask_app.logger.debug("AT timestamp: {}".format(tokens.expires_at))
+    logger.debug("AT timestamp: {}".format(tokens.expires_at))
     token_record = {
         "access_token": tokens.access_token,
         "refresh_token": tokens.refresh_token,
@@ -260,7 +274,7 @@ def save_tokens(token_key, tokens):
     # ddb.save_db_record(token_key, "TOKENS", str(tokens.expires_at), **token_record)
     file_destination = get_webex_token_file(token_key)
     with open(file_destination, "w") as file:
-        flask_app.logger.debug("Saving Webex tokens to: {}".format(file_destination))
+        logger.debug("Saving Webex tokens to: {}".format(file_destination))
         json.dump(token_record, file)
     
     token_refreshed = True # indicate to the main loop that the Webex token has been refreshed
@@ -281,25 +295,25 @@ def get_tokens_for_key(token_key):
     try:
         file_source = get_webex_token_file(token_key)
         with open(file_source, "r") as file:
-            flask_app.logger.debug("Loading Webex tokens from: {}".format(file_source))
+            logger.debug("Loading Webex tokens from: {}".format(file_source))
             token_data = json.load(file)
             tokens = AccessTokenAbs(token_data)
             return tokens
     except Exception as e:
-        flask_app.logger.info("Webex token load exception: {}".format(e))
+        logger.info("Webex token load exception: {}".format(e))
         return None
 
     """
     db_tokens = ddb.get_db_record(token_key, "TOKENS")
-    flask_app.logger.debug("Loaded tokens from db: {}".format(db_tokens))
+    logger.debug("Loaded tokens from db: {}".format(db_tokens))
     
     if db_tokens:
         tokens = AccessTokenAbs(db_tokens)
-        flask_app.logger.debug("Got tokens: {}".format(tokens))
+        logger.debug("Got tokens: {}".format(tokens))
         ## TODO: check if token is not expired, generate new using refresh token if needed
         return tokens
     else:
-        flask_app.logger.error("No tokens for key {}.".format(token_key))
+        logger.error("No tokens for key {}.".format(token_key))
         return None
     """
 
@@ -324,9 +338,9 @@ def refresh_tokens_for_key(token_key):
     try:
         new_tokens = AccessTokenAbs(integration_api.access_tokens.refresh(client_id, client_secret, tokens.refresh_token).json_data)
         save_tokens(token_key, new_tokens)
-        flask_app.logger.info("Tokens refreshed for key {}".format(token_key))
+        logger.info("Tokens refreshed for key {}".format(token_key))
     except ApiError as e:
-        flask_app.logger.error("Client Id and Secret loading error: {}".format(e))
+        logger.error("Client Id and Secret loading error: {}".format(e))
         return "Error refreshing an access token. Client Id and Secret loading error: {}".format(e)
         
     return "Tokens refreshed for {}".format(token_key)
@@ -359,7 +373,7 @@ def get_o365_account(user_id, org_id, resource = None):
         args["resource"] = resource
     account = Account(o365_credentials, tenant_id = o365_tenant_id, token_backend=token_backend, auth_flow_type = "authorization", **args)
     
-    flask_app.logger.debug("account {} is{} authenticated".format(user_id, "" if account.is_authenticated else " not"))
+    logger.debug("account {} is{} authenticated".format(user_id, "" if account.is_authenticated else " not"))
 
     return account
     
@@ -380,7 +394,7 @@ def get_o365_account_noauth():
 
     account = Account(o365_credentials, tenant_id = o365_tenant_id, auth_flow_type = "authorization")
     
-    flask_app.logger.debug("get O365 account without authentication")
+    logger.debug("get O365 account without authentication")
 
     return account
     
@@ -396,13 +410,13 @@ def o365_check_token():
     account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
     
     if not account.is_authenticated:
-        flask_app.logger.error("No valid O365 authorization, trying refresh token...")
+        logger.error("No valid O365 authorization, trying refresh token...")
         con = account.connection
         token = con.token_backend.get_token()
         if not token is None:
-            flask_app.logger.debug("Refresh O365 authorization, long lived: {}".format(token.is_long_lived))
+            logger.debug("Refresh O365 authorization, long lived: {}".format(token.is_long_lived))
             con.refresh_token()
-            flask_app.logger.debug("Refresh O365 authorization done")
+            logger.debug("Refresh O365 authorization done")
             o365_account_changed = True # indicate to the main loop that the O365 token has been refreshed
 
     # query_condition = "$filter=userType eq 'Guest' and mail eq '{}'".format(event.data.personEmail)
@@ -411,7 +425,7 @@ def o365_check_token():
     user_dir = aad.get_users(query = query_condition)
     
     for user in user_dir:
-        flask_app.logger.info("AAD dummy query result: {}".format([user.mail, user.user_principal_name, user.display_name]))
+        logger.info("AAD dummy query result: {}".format([user.mail, user.user_principal_name, user.display_name]))
     
 def save_timestamp(timestamp_key, timestamp):
     """
@@ -422,7 +436,7 @@ def save_timestamp(timestamp_key, timestamp):
         timestamp (float): datetime timestamp
     """
     timestamp_destination = get_timestamp_file(timestamp_key)
-    flask_app.logger.debug("Saving timestamp to {}".format(timestamp_destination))
+    logger.debug("Saving timestamp to {}".format(timestamp_destination))
     with open(timestamp_destination, "w") as file:
         json.dump({"timestamp": timestamp}, file)
     
@@ -439,24 +453,24 @@ def load_timestamp(timestamp_key):
         float: timestamp for datetime
     """
     timestamp_source = get_timestamp_file(timestamp_key)
-    flask_app.logger.debug("Loading timestamp from {}".format(timestamp_source))
+    logger.debug("Loading timestamp from {}".format(timestamp_source))
     try:
         with open(timestamp_source, "r") as file:
             ts = json.load(file)
             return float(ts.get("timestamp"))
     except Exception as e:
-        flask_app.logger.info("Timestamp load exception: {}".format(e))
+        logger.info("Timestamp load exception: {}".format(e))
         return None
     
     """
     db_timestamp = ddb.get_db_record(timestamp_key, "TIMESTAMP")
-    flask_app.logger.debug("Loaded timestamp from db: {}".format(db_timestamp))
+    logger.debug("Loaded timestamp from db: {}".format(db_timestamp))
     
     try:
         res = float(db_timestamp["pvalue"])
         return res
     except Exception as e:
-        flask_app.logger.debug("timestamp exception: {}".format(e))
+        logger.debug("timestamp exception: {}".format(e))
         return None
     """
         
@@ -483,10 +497,10 @@ def startup():
     global ddb
     
     ddb = DDB_Single_Table()
-    flask_app.logger.debug("initialize DDB object {}".format(ddb))
+    logger.debug("initialize DDB object {}".format(ddb))
     """
     
-    flask_app.logger.debug("Starting event check...")
+    logger.debug("Starting event check...")
     # check_events(EVENT_CHECK_INTERVALl)
     thread_executor.submit(check_events, EVENT_CHECK_INTERVAL)
     # o365_check_token()
@@ -530,7 +544,7 @@ def authorize():
     full_redirect_uri = os.getenv("REDIRECT_URI")
     if full_redirect_uri is None:
         full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("manager")
-    flask_app.logger.info("Authorize redirect URL: {}".format(full_redirect_uri))
+    logger.info("Authorize redirect URL: {}".format(full_redirect_uri))
 
     client_id = os.getenv("WEBEX_INTEGRATION_CLIENT_ID")
     redirect_uri = quote(full_redirect_uri, safe="")
@@ -559,33 +573,33 @@ def manager():
         
     input_code = request.args.get("code")
     check_phrase = request.args.get("state")
-    flask_app.logger.debug("Authorization request \"state\": {}, code: {}".format(check_phrase, input_code))
+    logger.debug("Authorization request \"state\": {}, code: {}".format(check_phrase, input_code))
 
     myUrlParts = urlparse(request.url)
     full_redirect_uri = os.getenv("REDIRECT_URI")
     if full_redirect_uri is None:
         full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("manager")
-    flask_app.logger.debug("Manager redirect URI: {}".format(full_redirect_uri))
+    logger.debug("Manager redirect URI: {}".format(full_redirect_uri))
     
     try:
         client_id = os.getenv("WEBEX_INTEGRATION_CLIENT_ID")
         client_secret = os.getenv("WEBEX_INTEGRATION_CLIENT_SECRET")
         tokens = AccessTokenAbs(webex_api.access_tokens.get(client_id, client_secret, input_code, full_redirect_uri).json_data)
-        flask_app.logger.debug("Access info: {}".format(tokens))
+        logger.debug("Access info: {}".format(tokens))
     except ApiError as e:
-        flask_app.logger.error("Client Id and Secret loading error: {}".format(e))
+        logger.error("Client Id and Secret loading error: {}".format(e))
         return "Error issuing an access token. Client Id and Secret loading error: {}".format(e)
         
     webex_integration_api = WebexTeamsAPI(access_token=tokens.access_token)
     try:
         user_info = webex_integration_api.people.me()
-        flask_app.logger.debug("Got user info: {}".format(user_info))
+        logger.debug("Got user info: {}".format(user_info))
         wxt_username = user_info.emails[0]
         save_tokens(wxt_token_key, tokens)
         
         ## TODO: add periodic access token refresh
     except ApiError as e:
-        flask_app.logger.error("Error getting user information: {}".format(e))
+        logger.error("Error getting user information: {}".format(e))
         return "Error getting your user information: {}".format(e)
         
     # hide the original redirect URL and its parameters from the user's browser
@@ -600,12 +614,12 @@ def o365_auth():
     """
 
     my_state = request.args.get("state", "local")
-    flask_app.logger.debug("input state: {}".format(my_state))
+    logger.debug("input state: {}".format(my_state))
     
     myUrlParts = urlparse(request.url)
     full_redirect_uri = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("o365_do_auth")
     # full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("o365_do_auth")
-    flask_app.logger.debug("Authorize redirect URL: {}".format(full_redirect_uri))
+    logger.debug("Authorize redirect URL: {}".format(full_redirect_uri))
 
     # callback = quote(full_redirect_uri, safe="")
     callback = full_redirect_uri
@@ -625,7 +639,7 @@ def o365_auth():
     new_o365_auth_parts = o365_auth_parts._replace(query = urlencode(o365_query))
     new_o365_url = urlunparse(new_o365_auth_parts)
     
-    flask_app.logger.debug("O365 auth URL: {}".format(new_o365_url))
+    logger.debug("O365 auth URL: {}".format(new_o365_url))
 
     return redirect(new_o365_url)
 
@@ -637,7 +651,7 @@ def o365_do_auth():
     global o365_account_changed
     
     my_state = request.args.get("state", O365_LOCAL_USER_KEY)
-    flask_app.logger.debug("O365 state: {}".format(my_state))
+    logger.debug("O365 state: {}".format(my_state))
     
     account = get_o365_account(my_state, O365_ACCOUNT_KEY) # person_data.orgId
     
@@ -648,20 +662,20 @@ def o365_do_auth():
     myUrlParts = urlparse(request.url)
     full_redirect_uri = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("o365_do_auth")
     # full_redirect_uri = myUrlParts.scheme + "://" + myUrlParts.netloc + url_for("o365_do_auth")
-    flask_app.logger.debug("Authorize doauth redirect URL: {}".format(full_redirect_uri))
+    logger.debug("Authorize doauth redirect URL: {}".format(full_redirect_uri))
 
     # callback = quote(full_redirect_uri, safe="")
     callback = full_redirect_uri
     # AzureAD allows only https redirect URIs
     req_url = re.sub(r"^http:", "https:", request.url)
     
-    flask_app.logger.debug("URL: {}".format(req_url))
+    logger.debug("URL: {}".format(req_url))
 
     result = account.con.request_token(req_url, 
                                        state=my_state,
                                        redirect_uri=callback)
                                        
-    flask_app.logger.info("O365 authentication status: {}".format("authenticated" if account.is_authenticated else "not authenticated"))
+    logger.info("O365 authentication status: {}".format("authenticated" if account.is_authenticated else "not authenticated"))
     
     # if result is True, then authentication was succesful 
     #  and the auth token is stored in the token backend
@@ -679,14 +693,14 @@ def o365_webhook():
     See: https://docs.microsoft.com/en-us/graph/api/resources/subscription
     """
     webhook = request.get_json(silent=True)
-    flask_app.logger.debug("O365 webhook received: {}".format(webhook))
+    logger.debug("O365 webhook received: {}".format(webhook))
     
     if request.method == "POST":
         
         # validation token when a new subscription is created
         validationToken = request.args.get("validationToken")
         if validationToken:
-            flask_app.logger.debug("validation token check: {}".format(validationToken))
+            logger.debug("validation token check: {}".format(validationToken))
             return Response(validationToken, mimetype="text/plain")
             
         try:
@@ -700,7 +714,7 @@ def o365_webhook():
                     # TODO: get O365 group name, get team list, find a team with the same name, get users' e-mail, update team membership
                         
         except Exception as e:
-            flask_app.logger.error("O365 webhook exception: {}".format(e))
+            logger.error("O365 webhook exception: {}".format(e))
             
         return Response("", status=202, mimetype="text/plain")
         
@@ -750,20 +764,20 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
         
         m365_group_last_check = datetime.utcnow()
     except Exception as e:
-        flask_app.logger.error("check_events() start exception: {}".format(e))
+        logger.error("check_events() start exception: {}".format(e))
     
     try:
         # the Bot sends messages to users and runs some Team operations
         wxt_bot = WebexTeamsAPI(access_token = os.getenv("BOT_ACCESS_TOKEN"))
         wxt_bot_info = wxt_bot.people.me()
         wxt_bot_id = wxt_bot_info.id
-        flask_app.logger.info("Messages will be sent under {}({}) identity".format(wxt_bot_info.displayName, wxt_bot_info.emails[0]))
+        logger.info("Messages will be sent under {}({}) identity".format(wxt_bot_info.displayName, wxt_bot_info.emails[0]))
     except ApiError as e:
-        flask_app.logger.error("Webex Bot API request error: {}".format(e))
+        logger.error("Webex Bot API request error: {}".format(e))
 
     while True:
         try:
-            # flask_app.logger.debug("Check events tick.")
+            # logger.debug("Check events tick.")
 
     # check for token until there is one available in the DB        
             if tokens is None or token_refreshed:
@@ -772,20 +786,20 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                     wxt_client = WebexTeamsAPI(access_token=tokens.access_token)
 
                     user_info = wxt_client.people.me()
-                    flask_app.logger.debug("Got user info: {}".format(user_info))
+                    logger.debug("Got user info: {}".format(user_info))
                     wx_org_id = user_info.orgId
                     wxt_username = user_info.emails[0]
                     wxt_user_id = user_info.id
                     
                     token_refreshed = False
                 else:
-                    flask_app.logger.error("No access tokens for key {}. Authorize the user first.".format(wxt_token_key))
+                    logger.error("No access tokens for key {}. Authorize the user first.".format(wxt_token_key))
                     
             if tokens:
     # renew access token using refresh token if needed
                 token_delta = datetime.fromtimestamp(float(tokens.expires_at)) - datetime.utcnow()
                 if token_delta.total_seconds() < SAFE_TOKEN_DELTA:
-                    flask_app.logger.info("Access token is about to expire, renewing...")
+                    logger.info("Access token is about to expire, renewing...")
                     refresh_tokens_for_key(wxt_token_key)
                     tokens = get_tokens_for_key(wxt_token_key)
                     wxt_client = WebexTeamsAPI(access_token=tokens.access_token)
@@ -801,21 +815,21 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                 try:
                     from_stamp = from_time.isoformat(timespec="milliseconds")+"Z"
                     to_stamp = to_time.isoformat(timespec="milliseconds")+"Z"
-                    flask_app.logger.debug("check interval {} - {}".format(from_stamp, to_stamp))
+                    logger.debug("check interval {} - {}".format(from_stamp, to_stamp))
                     event_list = wxt_client.events.list(_from=from_stamp, to=to_stamp, **xargs)
                     # TODO: do this in thread max_workers=5
-                    flask_app.logger.debug("event handling start at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
+                    logger.debug("event handling start at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
                     config = load_config(options)
                     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as event_executor:
                         for event in event_list:
                             if event.actorId in (wxt_user_id, wxt_bot_id):
-                                flask_app.logger.debug("ignore my own action")
+                                logger.debug("ignore my own action")
                             else:
                                 event_executor.submit(handle_event, event, wxt_client, wxt_bot, o365_account, options, config)
-                    flask_app.logger.debug("event handling end at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
+                    logger.debug("event handling end at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
                     
                 except ApiError as e:
-                    flask_app.logger.error("API request error: {}".format(e))
+                    logger.error("API request error: {}".format(e))
                 finally:
                     from_time = to_time
 
@@ -832,35 +846,35 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                 # 3. compare display name, sync all M365 users -> Webex where name matches
                 wxt_team_generator = wxt_bot.teams.list()
                 m365_group_list = find_o365_group(o365_account)
-                flask_app.logger.debug("Existing M365 Groups: {}".format(m365_group_list))
+                logger.debug("Existing M365 Groups: {}".format(m365_group_list))
                 for wxt_team in wxt_team_generator:
                     for m365_group in m365_group_list:
                         if wxt_team.name == m365_group["displayName"]:
-                            flask_app.logger.debug("Found matching Webex Team & M365 Group: {}".format(wxt_team.name))
+                            logger.debug("Found matching Webex Team & M365 Group: {}".format(wxt_team.name))
                             # TODO: sync team membership
                             wxt_team_member_generator = wxt_bot.team_memberships.list(wxt_team.id)
                             m365_group_member_list = get_o365_group_members(o365_account, m365_group["id"])
-                            flask_app.logger.debug("M365 Group members: {}".format(m365_group_member_list))
+                            logger.debug("M365 Group members: {}".format(m365_group_member_list))
                             for wxt_team_member in wxt_team_member_generator:
                                 user_found = False
                                 for i in range(0, len(m365_group_member_list)):
                                     if wxt_team_member.personEmail == m365_group_member_list[i]["mail"]:
-                                        flask_app.logger.info("User {} on both sides, skipping...".format(wxt_team_member.personEmail))
+                                        logger.info("User {} on both sides, skipping...".format(wxt_team_member.personEmail))
                                         user_found = True
                                         break
                                 if user_found:
                                     del m365_group_member_list[i]
                                 elif options["m365_user_sync"]:
                                     if wxt_team_member.isModerator:
-                                        flask_app.logger.info("User {} not found in M365 Group, however he's moderator, skipping...".format(wxt_team_member.personEmail))
+                                        logger.info("User {} not found in M365 Group, however he's moderator, skipping...".format(wxt_team_member.personEmail))
                                     else:
-                                        flask_app.logger.info("User {} not found in M365 Group, deleting from Webex Team...".format(wxt_team_member.personEmail))
+                                        logger.info("User {} not found in M365 Group, deleting from Webex Team...".format(wxt_team_member.personEmail))
                                         wxt_bot.team_memberships.delete(wxt_team_member.id)
                                                     
                             if options["m365_user_sync"]:
-                                flask_app.logger.info("Users missing in the Webex Team {}, adding to Webex Team...".format(m365_group_member_list))
+                                logger.info("Users missing in the Webex Team {}, adding to Webex Team...".format(m365_group_member_list))
                                 for m365_group_member in m365_group_member_list:
-                                    flask_app.logger.info("Adding user {} to the Webex Team".format(m365_group_member["mail"]))
+                                    logger.info("Adding user {} to the Webex Team".format(m365_group_member["mail"]))
                                     wxt_bot.team_memberships.create(wxt_team.id, personEmail = m365_group_member["mail"])
                                 
                             break
@@ -871,16 +885,16 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
             save_timestamp(TIMESTAMP_KEY, to_time.timestamp())
             now_check = datetime.utcnow()
             diff = (now_check - to_time).total_seconds()
-            flask_app.logger.info("event processing took {} seconds".format(diff))
+            logger.info("event processing took {} seconds".format(diff))
             if diff > statistics["max_time"]:
                 statistics["max_time"] = diff
                 statistics["max_time_at"] = datetime.now()
             if diff < check_interval:
                 time.sleep(check_interval - int(diff))
             else:
-                flask_app.logger.error("EVENT PROCESSING IS TAKING TOO LONG ({}), PERFORMANCE IMPROVEMENT NEEDED".format(diff))
+                logger.error("EVENT PROCESSING IS TAKING TOO LONG ({}), PERFORMANCE IMPROVEMENT NEEDED".format(diff))
         except Exception as e:
-            flask_app.logger.error("check_events() loop exception: {}".format(e))
+            logger.error("check_events() loop exception: {}".format(e))
             time.sleep(check_interval)
         finally:
             pass
@@ -898,21 +912,21 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
         # only for configured users
         if options["check_actor"]:
             actor_list = config.get("actors")
-            flask_app.logger.debug("configured actors: {}".format(actor_list))
+            logger.debug("configured actors: {}".format(actor_list))
             if not any(actor.emails[0].lower() in act_member.lower() for act_member in actor_list):
-                flask_app.logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
+                logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
                 return
         
         save_event_stats(event)
 
         if event.resource != "messages":
-            flask_app.logger.info("Event: {}".format(event))
+            logger.info("Event: {}".format(event))
                     
         room_info = wxt_client.rooms.get(event.data.roomId)
         room_id = base64.b64decode(room_info.id)
         room_uuid = room_id.decode("ascii").split("/")[-1] # uuid is the last element of room id
         
-        flask_app.logger.info("Room info: {}".format(room_info))
+        logger.info("Room info: {}".format(room_info))
         
         # Space membership change
         # there is an additional set of actions if a new Team is created
@@ -921,7 +935,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
             new_team = False
             if event.type == "created" and room_info.teamId:
                 # make sure Bot is a moderator of the Team
-                flask_app.logger.info("Make sure Bot is a Team moderator")
+                logger.info("Make sure Bot is a Team moderator")
                 bot_added_to_team = add_moderator(room_info, wxt_client, wxt_bot, wxt_bot_id)
                 team_info = wxt_client.teams.get(room_info.teamId)
                 team_id = base64.b64decode(team_info.id)
@@ -929,22 +943,22 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                 
                 event_in_general_space = team_uuid == room_uuid
                 new_team = event_in_general_space and team_info.creatorId == event.data.personId
-                flask_app.logger.info(f"event in general space: {event_in_general_space}, new team: {new_team}")
+                logger.info(f"event in general space: {event_in_general_space}, new team: {new_team}")
             if event.type == "created" and room_info.creatorId == event.data.personId:                             
                 # new team/space created
-                flask_app.logger.info("New {} created".format("Team" if new_team else "Space"))
+                logger.info("New {} created".format("Team" if new_team else "Space"))
                 
                 # make the Space moderated if it's part of a Team
                 if options["team_space_moderation"] and room_info.teamId:
                     try:
-                        flask_app.logger.info(f"Assign {event.data.personEmail} as a Space moderator")
+                        logger.info(f"Assign {event.data.personEmail} as a Space moderator")
                         wxt_bot.memberships.create(roomId = room_info.id, personId = wxt_bot_id, isModerator = True)
                         wxt_bot.memberships.update(event.data.id, isModerator = True)
                     except ApiError as e:
-                        flask_app.logger.info("Update membership error: {}".format(e))
+                        logger.info("Update membership error: {}".format(e))
                     
                 if options["notify"]:
-                    flask_app.logger.debug("Send compliance message")
+                    logger.debug("Send compliance message")
                     xargs = {
                         "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
                     }
@@ -960,48 +974,48 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                 user_account = get_o365_user_account(o365_account, event.data.personEmail)
                 statistics["aad_check"]["checked"] += 1
                 if not user_account:
-                    flask_app.logger.info("user {} not found in directory".format(event.data.personEmail))
+                    logger.info("user {} not found in directory".format(event.data.personEmail))
                     if hasattr(event.data, "personDisplayName"):
                         display_name = event.data.personDisplayName
                     else:
                         display_name = ""
                     form = bc.nested_replace_dict(bc.localize(bc.USER_WARNING_FORM, options["language"]), {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": os.getenv("URL_IDM"), "url_idm_guide": os.getenv("URL_IDM_GUIDE")})
                     wxt_bot.messages.create(roomId = event.data.roomId, markdown = "Uživatel nemá O365 účet.", attachments = [bc.wrap_form(form)])
-                    flask_app.logger.info("Deleting team membership for user {}".format(event.data.personEmail))
+                    logger.info("Deleting team membership for user {}".format(event.data.personEmail))
                     wxt_bot.memberships.delete(event.data.id)
                     statistics["aad_check"]["rejected"] += 1
                     
             # check if the membership changed on the Team level, list O365 Groups, find a group with the same displayName, find a user's account based on the e-mail (maybe a guest account), update group membership
             if room_info.teamId and options["webex_user_sync"]:
-                flask_app.logger.info("Check O365 Group relationship")
+                logger.info("Check O365 Group relationship")
                 if not team_info:
                     team_info = wxt_bot.teams.get(room_info.teamId)
                 o365_group = find_o365_group(o365_account, team_info.name)
                 if o365_group:
-                    flask_app.logger.info("Team name {}, o365 group: {}".format(team_info.name, o365_group))
+                    logger.info("Team name {}, o365 group: {}".format(team_info.name, o365_group))
                     if not user_account:
                         user_account = get_o365_user_account(o365_account, event.data.personEmail)
                     if user_account:
                         if event.type == "created":
-                            flask_app.logger.info("add o365 group member: {}".format(user_account["user_info"].user_principal_name))
+                            logger.info("add o365 group member: {}".format(user_account["user_info"].user_principal_name))
                             add_o365_group_member(o365_account, o365_group["id"], user_account["user_info"].object_id)
                         else:
-                            flask_app.logger.info("delete o365 group member: {}".format(user_account["user_info"].user_principal_name))
+                            logger.info("delete o365 group member: {}".format(user_account["user_info"].user_principal_name))
                             delete_o365_group_member(o365_account, o365_group["id"], user_account["user_info"].object_id)
                 else:
-                    flask_app.logger.info("No corresponding O365 Group for Team \"{}\"".format(team_info.name))
+                    logger.info("No corresponding O365 Group for Team \"{}\"".format(team_info.name))
                         
         # new message
         # check the attached files, delete the message if any file type violates the sharing policy
         if event.resource == "messages" and event.type == "created" and not event.actorId == wxt_user_id:
             # message_info = wxt_client.messages.get(event.data.id)
-            # flask_app.logger.info("Message info: {}".format(message_info))
+            # logger.info("Message info: {}".format(message_info))
             if options["file_events"] and hasattr(event.data, "files") and room_info.type == "group":
                 hdr = {"Authorization": "Bearer " + wxt_client.access_token}
                 for url in event.data.files:
                     statistics["file_types"]["scanned"] += 1
                     file_info = requests.head(url, headers = hdr)
-                    flask_app.logger.info("Message file: {}\ninfo: {}".format(url, file_info.headers))
+                    logger.info("Message file: {}\ninfo: {}".format(url, file_info.headers))
                     
                     # check for disallowed MIME types
                     """
@@ -1027,7 +1041,7 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                             "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
                             xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)          
     except Exception as e:
-        flask_app.logger.error("handle_event() exception: {}".format(e))
+        logger.error("handle_event() exception: {}".format(e))
 
 def add_moderator(room_info, wxt_client, bot_api, bot_id):
     bot_team_membership = None
@@ -1037,24 +1051,24 @@ def add_moderator(room_info, wxt_client, bot_api, bot_id):
         for team_membership in bot_team_membership_list:
             if team_membership.personId == bot_id:
                 bot_team_membership = team_membership
-                flask_app.logger.info("existing team membership: {}".format(bot_team_membership))
+                logger.info("existing team membership: {}".format(bot_team_membership))
                 break
     except ApiError as e:
-        flask_app.logger.info("Bot Team membership doesn't exist")
+        logger.info("Bot Team membership doesn't exist")
         
     if not bot_team_membership:
         # somehow team membership API doesn't work
         # my_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = wxt_user_id, isModerator = True)
-        flask_app.logger.debug("Adding myself as Team moderator")
+        logger.debug("Adding myself as Team moderator")
         my_membership = wxt_client.memberships.create(roomId = room_info.id, personId = wxt_user_id, isModerator = True)
-        flask_app.logger.debug("Adding bot as Team moderator")
+        logger.debug("Adding bot as Team moderator")
         try:
             bot_team_membership = wxt_client.team_memberships.create(room_info.teamId, personId = bot_id, isModerator = True)
             bot_added_to_team = True
         except ApiError as e:
-            flask_app.logger.error("Bot Team membership not created: {}".format(e))
+            logger.error("Bot Team membership not created: {}".format(e))
             
-        flask_app.logger.debug("Removing myself as Team moderator")
+        logger.debug("Removing myself as Team moderator")
         wxt_client.memberships.delete(my_membership.id)
         
     return bot_added_to_team
@@ -1078,7 +1092,7 @@ def save_event_stats(event):
     else:
         counter = counter_ref.get(event.type, 0)
     counter += 1
-    flask_app.logger.debug("save_event_stats() counter for {}/{} is now: {}".format(event.resource, event.type, counter))
+    logger.debug("save_event_stats() counter for {}/{} is now: {}".format(event.resource, event.type, counter))
     statistics["resources"][event.resource][event.type] = counter
     
 def format_event_stats():
@@ -1142,9 +1156,9 @@ def send_compliance_message(wxt_client, wxt_user_id, room_id, message, xargs, ac
         existing_membership_generator = wxt_client.memberships.list(roomId = room_id, personId = wxt_user_id)
         for existing_membership in existing_membership_generator:
             membership_found = True
-            flask_app.logger.info("found existing membership: {}".format(existing_membership))
+            logger.info("found existing membership: {}".format(existing_membership))
     except ApiError as e:
-        flask_app.logger.debug("client's (Bot) membership not found")
+        logger.debug("client's (Bot) membership not found")
     
     if not membership_found:
         actor_client = act_on_behalf_client if act_on_behalf_client else wxt_client
@@ -1152,7 +1166,7 @@ def send_compliance_message(wxt_client, wxt_user_id, room_id, message, xargs, ac
         my_membership_list = actor_client.memberships.list(roomId = room_id, personId = wxt_user_id)
         my_membership = None
         for my_membership in my_membership_list:
-            flask_app.logger.info("existing membership: {}".format(my_membership))
+            logger.info("existing membership: {}".format(my_membership))
         if not my_membership:
             if act_on_behalf_client_id:
                 proxy_membership = actor_client.memberships.create(roomId = room_id, personId = act_on_behalf_client_id)
@@ -1335,9 +1349,9 @@ if __name__ == "__main__":
         if args.verbose > 0:
             logging.basicConfig(level=logging.WARN)
             
-    flask_app.logger.info("Logging level: {}".format(logging.getLogger(__name__).getEffectiveLevel()))
+    logger.info("Logging level: {}".format(logging.getLogger(__name__).getEffectiveLevel()))
     
-    flask_app.logger.info("TESTVAR: {}".format(os.getenv("TESTVAR")))
+    logger.info("TESTVAR: {}".format(os.getenv("TESTVAR")))
     
     options["file_events"] = args.file_events
     options["notify"] = args.notify
@@ -1351,9 +1365,9 @@ if __name__ == "__main__":
         
     config = load_config(options)
 
-    flask_app.logger.info("OPTIONS: {}".format(options))
+    logger.info("OPTIONS: {}".format(options))
     
-    flask_app.logger.info("CONFIG: {}".format(config))
+    logger.info("CONFIG: {}".format(config))
 
     start_runner()
     flask_app.run(host="0.0.0.0", port=5050, ssl_context='adhoc')

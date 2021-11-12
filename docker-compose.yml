@@ -40,6 +40,7 @@ services:
       # avoid potential certificate issues when running via proxy, see:
       # https://stackoverflow.com/questions/48391750/disable-python-requests-ssl-validation-for-an-imported-module
       CURL_CA_BUNDLE: ''
+      LOG_LEVEL: 'DEBUG'
       # TESTVAR: "from_compose"
       #
       # available environment variables in the image (see what TESTVAR does)
@@ -79,5 +80,6 @@ services:
       - wx_o365_net
     volumes:
       - ./config:/config:z # ":z" avoids permission error in SELinux, see: https://blog.cyplo.dev/posts/2016/12/using-ad-hoc-docker-volumes-on-selinux-enabled-systems/
+      - ./log:/log:z
       - token-storage:/token_storage/data
     image: jardamartan/webex_compliance_o365
