@@ -13,7 +13,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-# usage: wxt_compliance_o365.py [-h] [-v] [-f] [-n] [-m] [-c] [-w] [-a] [-s] [-t] [-l LANGUAGE]
+# usage: wxt_compliance_o365.py [-h] [-v] [-f] [-n] [-m] [-c] [-w] [-a] [-s] [-t] [-o] [-u] [-l LANGUAGE]
 # 
 # options:
 #   -h, --help            show this help message and exit
@@ -24,14 +24,15 @@ services:
 #   -c, --check_aad_user  Check if a newly added user to a Webex Team has an account in Azure AD, default: no
 #   -w, --webex_user_sync
 #                         Sync Webex Team members to M365 Group of the same name, default: no
-#   -a, --check_actor     Perform actions only if the Webex Event actor is in the "actors" list from the /config/config.json file,
-#                         default: no
+#   -a, --check_actor     Perform actions only if the Webex Event actor is in the "actors" list from the /config/config.json file, default: no
 #   -s, --skip_timestamp  Ignore stored timestamp and monitor the events just from the application start, default: no
 #   -t, --team_space_moderation
 #                         Implicit team space moderation - any Space inside a Team is moderated by its creator, default: no
+#   -o, --own_org_only    Check only in Spaces owned by the Org, default: no
+#   -u, --own_users_only  Check only Org's own users activity, default: no
 #   -l LANGUAGE, --language LANGUAGE
 #                         Language (see localization_strings.LANGUAGE), default: cs_CZ
-    command: python wxt_compliance_o365.py -vv -fnca # -fnmwcast -l en_US
+    command: python wxt_compliance_o365.py -vv -fncaou # -fnmwcast -l en_US
     container_name: webex-compliance-o365
     ports:
       - "443:5050"
