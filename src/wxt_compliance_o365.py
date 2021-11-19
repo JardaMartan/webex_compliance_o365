@@ -190,6 +190,7 @@ TIMESTAMP_FILE = "timestamp_{}.json"
 thread_executor = concurrent.futures.ThreadPoolExecutor()
 wxt_username = "COMPLIANCE"
 wxt_user_id = None
+wxt_org_id = None
 wxt_token_key = "COMPLIANCE"
 wxt_bot_id = None
 token_refreshed = False
@@ -205,6 +206,8 @@ options = {
     "check_actor": False,
     "skip_timestamp": False,
     "team_space_moderation": False,
+    "own_org_only": False,
+    "own_users_only": False,
     "language": "cs_CZ"
 }
 
@@ -733,7 +736,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
     Access token is automatically refreshed if needed using Refresh Token.
     No additional user authentication is required.
     """
-    global wxt_username, wxt_user_id, wxt_bot_id, token_refreshed, o365_account_changed, options
+    global wxt_username, wxt_user_id, wxt_org_id, wxt_bot_id, token_refreshed, o365_account_changed, options
 
     # TODO:
     # 1. threading
@@ -787,7 +790,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
 
                     user_info = wxt_client.people.me()
                     logger.debug("Got user info: {}".format(user_info))
-                    wx_org_id = user_info.orgId
+                    wxt_org_id = user_info.orgId
                     wxt_username = user_info.emails[0]
                     wxt_user_id = user_info.id
                     
@@ -908,6 +911,10 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
     try:
         actor = wxt_client.people.get(event.actorId)
         
+        if options["own_users_only"] and actor.orgId != wxt_org_id:
+            logger.debug("Actor {} ({}) not from my own org. Skipping the event...".format(actor.displayName, actor.emails[0]))
+            return
+        
         # if we run in a test mode (--check_actor option), the actions take place
         # only for configured users
         if options["check_actor"]:
@@ -917,8 +924,6 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
                 logger.info("{} ({}) not in configured actor list".format(actor.displayName, actor.emails[0]))
                 return
         
-        save_event_stats(event)
-
         if event.resource != "messages":
             logger.info("Event: {}".format(event))
                     
@@ -926,8 +931,14 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
         room_id = base64.b64decode(room_info.id)
         room_uuid = room_id.decode("ascii").split("/")[-1] # uuid is the last element of room id
         
+        if options["own_org_only"] and room_info.ownerId != wxt_org_id:
+            logger.debug("Space id {} is not owned by my Org. Skipping the event...".format(room_info.ownerId))
+            return
+        
         logger.info("Room info: {}".format(room_info))
         
+        save_event_stats(event)
+
         # Space membership change
         # there is an additional set of actions if a new Team is created
         if event.resource == "memberships" and event.type in ["created","deleted"] and room_info.type == "group" and not event.actorId == wxt_user_id:
@@ -1338,6 +1349,8 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--check_actor", action='store_true', help="Perform actions only if the Webex Event actor is in the \"actors\" list from the /config/config.json file, default: no")
     parser.add_argument("-s", "--skip_timestamp", action='store_true', help="Ignore stored timestamp and monitor the events just from the application start, default: no")
     parser.add_argument("-t", "--team_space_moderation", action='store_true', help="Implicit team space moderation - any Space inside a Team is moderated by its creator, default: no")
+    parser.add_argument("-o", "--own_org_only", action='store_true', help="Check only in Spaces owned by the Org, default: no")
+    parser.add_argument("-u", "--own_users_only", action='store_true', help="Check only Org's own users activity, default: no")
     parser.add_argument("-l", "--language", default = "cs_CZ", help="Language (see localization_strings.LANGUAGE), default: cs_CZ")
     
     args = parser.parse_args()
@@ -1361,6 +1374,8 @@ if __name__ == "__main__":
     options["check_actor"] = args.check_actor
     options["skip_timestamp"] = args.skip_timestamp
     options["team_space_moderation"] = args.team_space_moderation
+    options["own_org_only"] = args.own_org_only
+    options["own_users_only"] = args.own_users_only
     options["language"] = args.language
         
     config = load_config(options)
