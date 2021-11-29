@@ -224,6 +224,7 @@ statistics = {
     },
     "aad_check": {
         "checked": 0,
+        "guest_allowed": 0,
         "rejected": 0
     }
 }
@@ -984,7 +985,10 @@ def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
             if event.type == "created" and event_in_general_space and options["check_aad_user"] and event.data.personId != wxt_bot_id:
                 user_account = get_o365_user_account(o365_account, event.data.personEmail)
                 statistics["aad_check"]["checked"] += 1
-                if not user_account:
+                if user_account is not None:
+                    if user_account["guest"]:
+                        statistics["aad_check"]["guest_allowed"] += 1
+                else:
                     logger.info("user {} not found in directory".format(event.data.personEmail))
                     if hasattr(event.data, "personDisplayName"):
                         display_name = event.data.personDisplayName
