@@ -829,7 +829,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                             if event.actorId in (wxt_user_id, wxt_bot_id):
                                 logger.debug("ignore my own action")
                             else:
-                                event_executor.submit(handle_event, event, wxt_client, wxt_bot, o365_account, options, config)
+                                event_executor.submit(handle_event, event, tokens.access_token, os.getenv("BOT_ACCESS_TOKEN"), o365_account, options, config)
                     logger.debug("event handling end at: {}".format(datetime.utcnow().isoformat(timespec="milliseconds")+"Z"))
                     
                 except ApiError as e:
@@ -903,13 +903,15 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
         finally:
             pass
             
-def handle_event(event, wxt_client, wxt_bot, o365_account, options, config):
+def handle_event(event, wxt_access_token, wxt_bot_token, o365_account, options, config):
     """
     Handle Webex Events API query result
     """
     global statistics
     
     try:
+        wxt_client = WebexTeamsAPI(access_token=wxt_access_token)
+        wxt_bot = WebexTeamsAPI(access_token = wxt_bot_token)
         actor = wxt_client.people.get(event.actorId)
         
         if options["own_users_only"] and actor.orgId != wxt_org_id:
