@@ -143,6 +143,7 @@ STATE_CHECK = "webex is great" # integrity test phrase
 
 # timers
 EVENT_CHECK_INTERVAL = 15 # delay in main loop
+EVENT_CHECK_DELAY = 0.8 # seconds, set the check interval window back in time to allow events to be stored in Webex
 M365_GROUP_CHECK_INTERVAL = 15 # delay of M365 Group users sync to Webex Team
 SAFE_TOKEN_DELTA = 3600 # safety seconds before access token expires - renew if smaller
 
@@ -759,7 +760,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
             last_timestamp = load_timestamp(TIMESTAMP_KEY)
         
         if last_timestamp is None:
-            from_time = datetime.utcnow()
+            from_time = datetime.utcnow() - timedelta(seconds = EVENT_CHECK_DELAY)
         else:
             from_time = datetime.fromtimestamp(last_timestamp)
 
@@ -813,7 +814,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
                 o365_account = get_o365_account(O365_LOCAL_USER_KEY, O365_ACCOUNT_KEY)
                 o365_account_changed = False
 
-            to_time = datetime.utcnow()
+            to_time = datetime.utcnow() - timedelta(seconds = EVENT_CHECK_DELAY)
     # query the Events API        
             if wxt_client:
                 try:
@@ -887,7 +888,7 @@ def check_events(check_interval=EVENT_CHECK_INTERVAL):
 
             # save timestamp
             save_timestamp(TIMESTAMP_KEY, to_time.timestamp())
-            now_check = datetime.utcnow()
+            now_check = datetime.utcnow() - timedelta(seconds = EVENT_CHECK_DELAY)
             diff = (now_check - to_time).total_seconds()
             logger.info("event processing took {} seconds".format(diff))
             if diff > statistics["max_time"]:
