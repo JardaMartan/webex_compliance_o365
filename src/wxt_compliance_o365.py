@@ -4,6 +4,7 @@ import os
 import sys
 import uuid
 import logging
+import logging.handlers
 import coloredlogs
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -45,6 +46,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  [%(levelname)7s]  [%(module)s.%(name)s.%(funcName)s]:%(lineno)s %(message)s",
     handlers=[
+        logging.handlers.TimedRotatingFileHandler("/log/debug.log", backupCount=6, when='W6', interval=1, atTime='midnight')
         logging.FileHandler("/log/debug.log"),
         logging.StreamHandler(sys.stdout)
     ]
