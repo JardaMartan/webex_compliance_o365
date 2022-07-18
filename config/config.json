@@ -7,6 +7,9 @@
   "options": {
     "check_actor": true,
     "team_space_moderation": true,
-    "language": "cs_CZ"
+    "language": "cs_CZ",
+    "url_onedrive_link": "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
+    "url_idm": "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
+    "url_idm_guide": "https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
   }
 }
