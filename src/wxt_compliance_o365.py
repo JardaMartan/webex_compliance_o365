@@ -46,7 +46,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  [%(levelname)7s]  [%(module)s.%(name)s.%(funcName)s]:%(lineno)s %(message)s",
     handlers=[
-        logging.handlers.TimedRotatingFileHandler("/log/debug.log", backupCount=6, when='W6', interval=1, atTime='midnight'),
+        logging.handlers.TimedRotatingFileHandler("/log/debug.log", backupCount=6, when='D', interval=7, atTime='midnight'), # weekly rotation
         logging.FileHandler("/log/debug.log"),
         logging.StreamHandler(sys.stdout)
     ]
