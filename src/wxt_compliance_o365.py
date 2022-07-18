@@ -977,7 +977,7 @@ def handle_event(event, wxt_access_token, wxt_bot_token, o365_account, options, 
                 if options["notify"]:
                     logger.debug("Send compliance message")
                     xargs = {
-                        "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
+                        "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_WARNING_FORM, options["language"]), {"url_onedrive_link": get_option_vs_env(options, "url_onedrive_link")}))]
                     }
                     msg = "Jestliže budete v tomto Prostoru sdílet dokumenty, připojte k němu SharePoint úložiště. Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space"
                     if room_info.teamId and bot_added_to_team:                            
@@ -999,7 +999,7 @@ def handle_event(event, wxt_access_token, wxt_bot_token, o365_account, options, 
                         display_name = event.data.personDisplayName
                     else:
                         display_name = ""
-                    form = bc.nested_replace_dict(bc.localize(bc.USER_WARNING_FORM, options["language"]), {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": os.getenv("URL_IDM"), "url_idm_guide": os.getenv("URL_IDM_GUIDE")})
+                    form = bc.nested_replace_dict(bc.localize(bc.USER_WARNING_FORM, options["language"]), {"display_name": display_name, "email": event.data.personEmail, "group_name": team_info.name, "url_idm": get_option_vs_env(options, "url_idm"), "url_idm_guide": get_option_vs_env(options, "url_idm_guide")})
                     wxt_bot.messages.create(roomId = event.data.roomId, markdown = "Uživatel nemá O365 účet.", attachments = [bc.wrap_form(form)])
                     logger.info("Deleting team membership for user {}".format(event.data.personEmail))
                     wxt_bot.memberships.delete(event.data.id)
@@ -1055,13 +1055,20 @@ def handle_event(event, wxt_access_token, wxt_bot_token, o365_account, options, 
                         statistics["file_types"]["deleted"] += 1
                         wxt_client.messages.delete(event.data.id)
                         xargs = {
-                            "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_LINK_FORM, options["language"]), {"url_onedrive_link": os.getenv("URL_ONEDRIVE_LINK")}))]
+                            "attachments": [bc.wrap_form(bc.nested_replace_dict(bc.localize(bc.SP_LINK_FORM, options["language"]), {"url_onedrive_link": get_option_vs_env(options, "url_onedrive_link")}))]
                         }
                         send_compliance_message(wxt_bot, wxt_bot_id, event.data.roomId,
                             "Odeslal jste typ dokumentu, který podléhá klasifikaci. **Připojte k tomuto Prostoru SharePoint úložiště a dokument pošlete znovu.** Návod najdete zde: https://help.webex.com/cs-cz/n4ve41eb/Webex-Link-a-Microsoft-OneDrive-or-SharePoint-Online-Folder-to-a-Space",
                             xargs, act_on_behalf_client = wxt_client, act_on_behalf_client_id = wxt_user_id)          
     except Exception as e:
         logger.error("handle_event() exception: {}".format(e))
+        
+def get_option_vs_env(options, key):
+    result = options.get(key)
+    # assume env variable in upper case
+    if result is None:
+        result = os.getenv(key.upper())        
+    return result
 
 def add_moderator(room_info, wxt_client, bot_api, bot_id):
     bot_team_membership = None
