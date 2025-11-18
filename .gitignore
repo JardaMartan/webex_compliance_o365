@@ -1,0 +1,21 @@
+venv
+zappa*
+__pycache__
+pyvenv.cfg
+.env
+.env_test
+.env_local
+.boto
+.github/
+#*.txt
+.DS_Store
+.dockerignore
+.env_docker
+webhook_sample.json
+docker-compose-test.*
+cpost
+test
+log/
+
+# Token storage - contains OAuth tokens and timestamps
+token_storage/
